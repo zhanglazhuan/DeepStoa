@@ -1,0 +1,10 @@
+# debug/t_display/sdkconfig.defaults
+# Enable PSRAM (for 48KB frame buffer)
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_USE_MALLOC=y
+
+# Set main task stack size to 8192 (enough for test flow)
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+
+# Increase task watchdog timeout (bit-bang SPI is slow, ~60s per full frame)
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=120
