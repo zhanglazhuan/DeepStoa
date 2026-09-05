@@ -1,0 +1,14 @@
+# debug/t_aw9523/sdkconfig.defaults
+# Target: ESP32-S3 (DeepStoa v1 board)
+CONFIG_IDF_TARGET_ESP32S3=y
+
+# Set main task stack size to 8192
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+
+# Increase task watchdog timeout (max 60 for ESP32S3)
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=60
+
+# FatFS: enable LFN (required by hardcoded FF_FS_EXFAT=1 in ffconf.h)
+CONFIG_FATFS_LFN_HEAP=y
+CONFIG_FATFS_MAX_LFN=255
+CONFIG_FATFS_USE_LABEL=y

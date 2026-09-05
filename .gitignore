@@ -1,0 +1,26 @@
+# ── ESP-IDF build output ──
+build/
+
+# ── debug/ 子项目（各自是独立 ESP-IDF 工程：源码入库、编译产物忽略）──
+debug/**/build/
+
+# ── ESP-IDF 生成 / 托管产物 ──
+sdkconfig
+sdkconfig.old
+dependencies.lock
+managed_components/
+
+# ── 按项目策略不入库的目录 ──
+archive/
+
+# ── Python artifacts ──
+__pycache__/
+*.py[cod]
+
+# ── IDE / tooling ──
+.claude/
+.vscode/
+
+# ── OS junk ──
+Thumbs.db
+.DS_Store

@@ -1,11 +1,10 @@
 # debug/t_display/CMakeLists.txt
+# E-ink display test for ESP32-S3 DevKit + GDEM0397T81P
+# Uses hardware SPI + direct GPIO (no AW9523 IO expander needed)
 cmake_minimum_required(VERSION 3.16)
 
-# Point to drivers/ directory for extra components (aw9523, gdem0397t81p)
-set(EXTRA_COMPONENT_DIRS
-    ${CMAKE_SOURCE_DIR}/../../drivers/aw9523
-    ${CMAKE_SOURCE_DIR}/../../drivers/gdem0397t81p
-)
+# Set target before project()
+set(ENV{IDF_TARGET} esp32s3)
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(t_display)

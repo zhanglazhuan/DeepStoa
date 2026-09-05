@@ -1,0 +1,8 @@
+# server/run.py 总入口所需的全部依赖（news + ota + logs 三套接口）
+# 安装： pip install -r server/requirements.txt
+
+fastapi>=0.115          # news / logs 接口
+uvicorn[standard]>=0.30 # ASGI 服务器
+a2wsgi>=1.10            # 把 ota 的 Flask 应用挂进 FastAPI（同一个端口）
+Flask>=3.0,<4.0         # ota 服务端（固件下载的 Range 续传依赖它）
+requests>=2.31          # server/ota/publish.py 发布脚本用

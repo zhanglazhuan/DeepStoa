@@ -1,0 +1,85 @@
+# DeepStoa — sdkconfig defaults
+CONFIG_IDF_TARGET_ESP32S3=y
+
+# ESP32-S3 PSRAM (external 8MB octal, needed for display framebuffers)
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+CONFIG_SPIRAM_IGNORE_NOTFOUND=y
+
+# PSRAM 并入默认堆。原来是 SPIRAM_USE_CAPS_ALLOC —— 那样 malloc() 只能拿到
+# 内部 RAM，PSRAM 必须 heap_caps_malloc(MALLOC_CAP_SPIRAM) 显式要。
+# 而 LVGL 走的是 lv_malloc_core -> malloc()，等于那 8MB 它一点都用不到：
+# 跑几十分钟内部 RAM 见底后，渲染里的分配失败，LVGL 的策略是
+# "Allocating layer buffer failed. Try later"（lv_draw.c:505）—— 返回 NULL
+# 但 draw task 不销毁，refr_invalid_areas 死等，于是 lv_timer_handler()
+# 永不返回，IDLE0 饿死，task_wdt 每 5 秒报一次。表现是静默卡死不是崩溃。
+CONFIG_SPIRAM_USE_MALLOC=y
+# 小于该值的分配优先走内部 RAM（内部不够时仍会回落到 PSRAM）。
+# IDF 默认是 16K，实测下来太高了：monitor 报出来内部 87% 用满（free 只剩 19874，
+# 历史最低 min_free=222），而 PSRAM 才用掉 2% —— 几乎所有分配都小于 16K，
+# 于是全挤在内部 RAM 里，8MB PSRAM 闲着。后果是 SPI 从 PSRAM 发帧时找不到
+# 内部 DMA 反弹缓冲，刷屏直接失败（spi_master: Failed to allocate priv TX buffer）。
+# 取 1K。三档都在真机上量过 monitor 的 DMA 最坏水位（min_free）：
+#   16384 -> 分配直接失败，刷屏起不来
+#    4096 -> min_free 只剩 318 字节，能跑但毫无余量，随便加个 UI 元素就翻
+#    1024 -> min_free 9838，正常
+# 别看 4096 那次也"能跑"，318 字节等于没有余量，问题会以"改了 A 结果 B 坏了"
+# 的形式冒出来，极难归因。
+# LVGL 的对象/样式都是几百字节级，1K 门槛碰不到它们，仍然留在 DRAM 里；
+# 被挪去 PSRAM 的是 1K 以上的中大块（图层缓冲、图片缓存、各 app 的 model 数组）。
+CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=1024
+# WiFi / LWIP 的缓冲优先放 PSRAM，分配不到再回落内部（IDF 专门给的开关）。
+# 这是比调 ALWAYSINTERNAL 更精准的办法：WiFi 那几十 KB 是内部 RAM 的大户，
+# 而 LVGL 的对象只有几百字节，不受这个开关影响，仍然留在 DRAM 里。
+# 注意它只在电台真正打开后才省得出来 —— 没连网时移不走任何东西。
+CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y
+# 给 DMA / ISR 留出的内部 RAM 下限
+CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL=32768
+# .bss 留在内部：display_control.c 的 LVGL draw buffer 是静态数组，
+# 它是渲染时的热写目标，扔去 PSRAM 才真的会拖慢。
+# CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY is not set
+
+# FATFS: ESP-IDF v5.5 hardcodes FF_FS_EXFAT=1 which requires LFN
+CONFIG_FATFS_LFN_HEAP=y
+CONFIG_FATFS_MAX_LFN=255
+CONFIG_FATFS_USE_LABEL=y
+
+# Flash size (actual chip is 16MB)
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+
+# Partition table
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+CONFIG_PARTITION_TABLE_FILENAME="partitions.csv"
+
+# LVGL memory —— 这一行是死配置，留着当记录：
+# LV_MEM_SIZE_KILOBYTES 在 LVGL 的 Kconfig 里 depends on LV_USE_BUILTIN_MALLOC，
+# 而本工程用的是 clib malloc（backtrace 里是 lv_mem_core_clib.c），所以这个符号
+# 压根不会出现在生成的 sdkconfig 里，"200KB 池"从来就不存在 ——
+# LVGL 一直在直接吃系统堆。要改 LVGL 的内存行为得先切 LV_USE_BUILTIN_MALLOC。
+# CONFIG_LV_MEM_SIZE_KILOBYTES=200
+
+# LVGL 日志。原来整个关掉，于是上面那条 "Try later" 的 WARN 被编译掉了，
+# 卡死时串口上一个字都没有。WARN 级别开销很小，务必留着。
+CONFIG_LV_USE_LOG=y
+CONFIG_LV_LOG_LEVEL_WARN=y
+
+# LVGL fonts — include montserrat 14 and 16 for UI
+CONFIG_LV_FONT_MONTSERRAT_14=y
+CONFIG_LV_FONT_MONTSERRAT_16=y
+
+# ── OTA ────────────────────────────────────────────────────────────────
+# 回滚：新固件起不来时 bootloader 自动切回旧槽。ota_init() 里调
+# esp_ota_mark_app_valid_cancel_rollback() 声明“这版能跑”。
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+# 自建 OTA 服务默认是明文 http，要显式放行（esp_https_ota 默认只收 https）
+CONFIG_ESP_HTTPS_OTA_ALLOW_HTTP=y
+# https 固件源要用到证书 bundle；mbedtls 缓冲放 PSRAM，内部 DRAM 不够用
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL=y
+CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC=y
+
+# Main task stack
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384
+CONFIG_LV_FONT_MONTSERRAT_48=y

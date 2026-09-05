@@ -1,0 +1,26 @@
+# DeepStoa partition table (ESP32-S3, 16MB flash) — 双 OTA 槽
+#
+# 没有 factory 分区：otadata 为空时 bootloader 启 ota_0，idf.py flash 也是写 ota_0，
+# 所以开发流程不变。ota_0 / ota_1 各 3MB（当前固件约 1MB，留足余量），
+# 两个 app 分区的偏移必须 64KB 对齐。
+#
+# 注意：改分区表会挪动 fdb_kvdb 的位置，设备上的 FlashDB 数据会失效，
+#       升到这张表需要整片擦除后重新烧录（idf.py erase-flash flash）。
+#
+# Name,      Type, SubType,  Offset,    Size,     Flags
+nvs,         data, nvs,      0x9000,    0x6000,
+otadata,     data, ota,      0xf000,    0x2000,
+phy_init,    data, phy,      0x11000,   0x1000,
+ota_0,       app,  ota_0,    0x20000,   0x300000,
+ota_1,       app,  ota_1,    0x320000,  0x300000,
+# FlashDB 拆成两块，恢复出厂设置只擦 user，sys 原样保留：
+#   fdb_sys  —— 厂家数据：机器码、序列号、出厂标定。产线单独刷，用户擦不掉。
+#   fdb_user —— 用户数据：Wi-Fi 凭据、各 app 的设置和使用记录。
+fdb_sys,     data, fat,      0x620000,  0x8000,
+fdb_user,    data, fat,      0x628000,  0x20000,
+# storage: 内部 flash 上的 FAT 分区，挂到 /sdcard。
+# 目的是在没有 SD 卡座的情况下也有"真实文件"可读 —— ID3 解析、VBR 时长、
+# seek 索引这些全是纯文件解析，不需要 codec，只需要有文件。
+# 镜像内容来自仓库里的 fs_image/ 目录，由 CMake 打包、idf.py flash 一起烧进去。
+# SD 卡到位后把挂载点让给 SD 即可，路径不用改。
+storage,     data, fat,      0x648000,  0x200000,

@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+@theme {
+  --color-paper: #fafaf9;
+  --color-paper-dark: #f0efed;
+  --color-paper-border: #e6e4e0;
+}
+
+@layer base {
+  body {
+    @apply bg-paper text-neutral-900 antialiased;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+@layer utilities {
+  .fluid-heading-xl {
+    font-size: clamp(2.25rem, 5vw, 4.5rem);
+    font-weight: 300;
+    line-height: 1.1;
+  }
+  .fluid-heading-lg {
+    font-size: clamp(1.75rem, 3.5vw, 3rem);
+    font-weight: 300;
+    line-height: 1.2;
+  }
+  .fluid-heading-md {
+    font-size: clamp(1.25rem, 2.5vw, 2rem);
+    font-weight: 400;
+    line-height: 1.3;
+  }
+}
