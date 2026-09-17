@@ -13,8 +13,7 @@
  *   - SD 卡座到位后，把 SD 挂到同一个点、不再挂内部分区即可，路径依然稳定。
  *   名字上是有点别扭（内部 flash 却叫 sdcard），但路径稳定比名字重要。
  *
- * 分区内容来自仓库里的 fs_image/ 目录，由 CMake 打成 FAT 镜像，
- * idf.py flash 时一并烧写。往里放文件 = 往 fs_image/ 里放文件。
+ * 不预烧镜像：首次挂载失败时自动格式化成空 FAT 并建好 /music 目录。
  */
 
 #ifndef FS_CONTROL_H
