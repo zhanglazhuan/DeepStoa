@@ -21,6 +21,6 @@ fdb_user,    data, fat,      0x628000,  0x20000,
 # storage: 内部 flash 上的 FAT 分区，挂到 /sdcard。
 # 目的是在没有 SD 卡座的情况下也有"真实文件"可读 —— ID3 解析、VBR 时长、
 # seek 索引这些全是纯文件解析，不需要 codec，只需要有文件。
-# 镜像内容来自仓库里的 fs_image/ 目录，由 CMake 打包、idf.py flash 一起烧进去。
+# 不预烧镜像：首次挂载失败时 fs_control 自动格式化成空 FAT 并建好 /music。
 # SD 卡到位后把挂载点让给 SD 即可，路径不用改。
 storage,     data, fat,      0x648000,  0x200000,
