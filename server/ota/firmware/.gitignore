@@ -1,0 +1,5 @@
+# 固件产物和运行时数据不进版本库
+*.bin
+reports.ndjson
+channels.json
+changelog/*.txt

@@ -1,0 +1,146 @@
+[
+  {
+    "id": "n01",
+    "title": "E-ink panels finally get a usable refresh rate",
+    "source": "The Verge",
+    "date": "2026-09-01",
+    "summary": "A new driving waveform cuts full-screen ghosting to a single flash, and partial updates now land under 300 ms.",
+    "content": "For years the trade-off with electronic paper was simple: you got a screen you could read in daylight for a week on one charge, and in exchange you accepted that anything moving looked like a smear.\n\nThe new waveform changes the arithmetic. By splitting the update into a short clearing pulse and a longer settling phase, panel makers report a full refresh in roughly 600 ms and a partial refresh under 300 ms, with ghosting confined to a single visible flash rather than the three or four most readers are used to.\n\nWhether that is enough to change what the panels are used for is a different question. Six hundred milliseconds is still an eternity next to an LCD, and the people who care most about the difference are the ones least likely to be reading on paper-like displays in the first place."
+  },
+  {
+    "id": "n02",
+    "title": "Small language models move onto microcontrollers",
+    "source": "IEEE Spectrum",
+    "date": "2026-09-01",
+    "summary": "Quantised to four bits, a 300M-parameter model now runs on a dual-core MCU with 8 MB of PSRAM.",
+    "content": "The demonstration is deliberately unglamorous: a dual-core microcontroller, 8 MB of external PSRAM, and a model small enough to fit in it after four-bit quantisation.\n\nThroughput is about two tokens per second, which is useless for chat and perfectly adequate for what the team actually built: an offline command parser that turns a spoken sentence into a structured intent without ever touching a network.\n\nThe interesting constraint turned out not to be compute but memory bandwidth. Most of the wall-clock time is spent moving weights, which is why the team spent more effort on layout than on the arithmetic."
+  },
+  {
+    "id": "n03",
+    "title": "Spaced repetition, revisited",
+    "source": "Nature",
+    "date": "2026-08-31",
+    "summary": "A five-year study finds review intervals matter far less than whether the learner reconstructs the answer from memory.",
+    "content": "The study followed roughly 4,000 learners across five years and a range of scheduling algorithms, from fixed intervals to the adaptive schedulers most flashcard software now ships with.\n\nThe headline result is deflationary. Differences between schedulers accounted for a small fraction of the variance in long-term retention. What dominated was whether the learner attempted to reconstruct the answer before revealing it, a behaviour no scheduler can enforce and most interfaces quietly discourage.\n\nThe authors are careful about the implication. They are not arguing that scheduling is worthless, only that it is a second-order effect that the field has spent a disproportionate share of its attention on."
+  },
+  {
+    "id": "n04",
+    "title": "The quiet return of the single-purpose device",
+    "source": "Wired",
+    "date": "2026-08-31",
+    "summary": "Sales of devices that do one thing are growing for the first time since 2011.",
+    "content": "The category was supposed to be extinct. The phone absorbed the camera, the music player, the map, the notebook and the alarm clock, and for a decade the only question was what it would absorb next.\n\nWhat the numbers now show is a small but consistent recovery, concentrated in devices whose selling point is what they cannot do. Buyers are not paying for capability; they are paying for the absence of a notification layer.\n\nIt is a small market and probably stays one. But it is the first time in fifteen years that the direction of travel has reversed at all."
+  },
+  {
+    "id": "n05",
+    "title": "Why battery percentages lie",
+    "source": "Ars Technica",
+    "date": "2026-08-30",
+    "summary": "Coulomb counting drifts, voltage curves are flat in the middle, and every vendor papers over it differently.",
+    "content": "A lithium cell spends most of its useful discharge sitting on a nearly flat voltage plateau, which means voltage alone tells you very little about remaining charge in the range you actually care about.\n\nCoulomb counting solves that by integrating current over time, but the integral accumulates error, so every fuel gauge periodically snaps its estimate back to a voltage-derived anchor. The visible symptom is a percentage that hangs at 40 for an hour and then drops six points at once.\n\nVendors then apply their own smoothing on top, which is why two devices with identical cells can disagree by ten points about the same state of charge."
+  },
+  {
+    "id": "n06",
+    "title": "A field guide to reading in direct sunlight",
+    "source": "The Atlantic",
+    "date": "2026-08-30",
+    "summary": "Reflective displays win outdoors not because they are brighter but because they stop competing with the sun.",
+    "content": "An emissive display outdoors is in an arms race it cannot win: every increase in ambient light demands a matching increase in backlight, and the battery pays for both.\n\nA reflective display opts out of the race entirely. It uses the same light that was drowning the phone screen, which is why contrast on electronic paper improves as conditions get worse for everything else.\n\nThe corollary is the part people forget: indoors at night, the same physics runs backwards, and you are back to needing a lamp."
+  },
+  {
+    "id": "n07",
+    "title": "Open-source firmware for e-readers reaches 1.0",
+    "source": "LWN",
+    "date": "2026-08-29",
+    "summary": "After four years the project ships a stable API for page rendering, storage and power management.",
+    "content": "The 1.0 release is less about new features than about a promise: the page rendering, storage and power-management interfaces are now frozen for the 1.x series.\n\nFor the handful of hardware vendors shipping the stack, that turns an ongoing porting cost into a one-time one. For everyone else it makes third-party applications possible for the first time.\n\nThe maintainers are blunt about what 1.0 does not mean. Driver coverage is still thin, and anything outside the three reference panels remains a porting project."
+  },
+  {
+    "id": "n08",
+    "title": "Handwriting recognition on-device, without the cloud",
+    "source": "MIT Technology Review",
+    "date": "2026-08-29",
+    "summary": "A 2 MB model handles cursive at 96% character accuracy on a mid-range MCU.",
+    "content": "The model is small enough to sit in flash and fast enough to keep up with a person writing at normal speed, which are the only two numbers that matter for the use case.\n\nAccuracy on clean print is unremarkable. The interesting result is cursive, where the reported 96% character accuracy comes close to what cloud services were delivering three years ago at several orders of magnitude more compute.\n\nThe training set is the usual caveat: it is heavily weighted toward Latin scripts, and the numbers do not transfer."
+  },
+  {
+    "id": "n09",
+    "title": "Students are using flashcards wrong, say researchers",
+    "source": "Science",
+    "date": "2026-08-28",
+    "summary": "Recognition feels like learning. Recall is learning. The gap explains most failed study sessions.",
+    "content": "Recognising a correct answer among alternatives produces a strong feeling of knowing and a weak memory trace. Producing the answer from nothing produces the opposite.\n\nBecause the feeling is what learners use to decide when to stop studying, the more comfortable method reliably wins, and reliably underperforms. The practical suggestion is blunt: hide the answer until you have said yours out loud.\n\nThe design implication is uncomfortable for software. An interface that makes studying feel effortless is optimising against the thing it is supposed to deliver."
+  },
+  {
+    "id": "n10",
+    "title": "Deep sleep, shallow wake: the MCU power puzzle",
+    "source": "Hackaday",
+    "date": "2026-08-28",
+    "summary": "Getting to 20 uA is easy. Getting back to a drawn screen in 200 ms is not.",
+    "content": "Datasheet sleep numbers are honest and almost useless, because they describe a chip with everything switched off, including the things you need on to wake up usefully.\n\nThe real budget is dominated by what you must keep in retention RAM to avoid a cold boot, and by how much of the display pipeline you have to re-initialise before the first pixel moves.\n\nThe write-up ends with the measurement everyone should be taking instead: joules per wake-and-draw cycle, not microamps at rest."
+  },
+  {
+    "id": "n11",
+    "title": "The case against infinite scroll",
+    "source": "The Guardian",
+    "date": "2026-08-27",
+    "summary": "Pagination gives a reader something an endless feed cannot: an ending.",
+    "content": "Infinite scroll was adopted because it measured well. Sessions got longer, and longer sessions were the metric.\n\nThe argument against it is not that it works badly but that it works by removing the moment where a reader would otherwise decide whether to continue. A page that ends returns that decision to the person holding it.\n\nThe piece stops short of prescribing pagination everywhere. Its narrower claim is that the ending is a feature, and that removing it should be a deliberate choice rather than a default."
+  },
+  {
+    "id": "n12",
+    "title": "Typography for 300 ppi reflective displays",
+    "source": "A List Apart",
+    "date": "2026-08-27",
+    "summary": "Hinting matters more than antialiasing when every pixel is either black or white.",
+    "content": "On a one-bit display there is no grey to hide behind. A stem either lands on a pixel boundary or it does not, and the difference between those two cases is the difference between a crisp page and a muddy one.\n\nWhich is why hinting, a technology widely declared obsolete on high-DPI colour screens, turns out to be the single highest-leverage thing you can fix on electronic paper.\n\nThe practical advice is short: pick a face with real hinting, set it a size larger than you think you need, and stop trying to simulate grey."
+  },
+  {
+    "id": "n13",
+    "title": "A week with a device that cannot open a browser",
+    "source": "Polygon",
+    "date": "2026-08-26",
+    "summary": "Notes from seven days on hardware whose most useful feature is a missing one.",
+    "content": "The first day is irritating. The reflex to check something arrives roughly every ten minutes and finds nothing to act on.\n\nBy the fourth day the reflex has mostly stopped firing, which is either evidence that the device works or evidence about the reflex. The review does not resolve which.\n\nThe honest conclusion is that the hardware is unremarkable and the week was not. Whether that is worth the price of a second device is left to the reader."
+  },
+  {
+    "id": "n14",
+    "title": "Rethinking the review queue",
+    "source": "ACM Queue",
+    "date": "2026-08-26",
+    "summary": "What happens when you cap the daily queue at what a learner can actually finish.",
+    "content": "An uncapped review queue is a debt instrument. Miss two days and it compounds into a backlog large enough that the rational move is to declare bankruptcy and start over.\n\nCapping the queue trades theoretical optimality for the thing that actually determines outcomes: whether the learner opens the application tomorrow.\n\nThe implementation detail that matters is which cards get deferred. Deferring the oldest is intuitive and wrong; deferring the ones the scheduler is most confident about costs the least retention."
+  },
+  {
+    "id": "n15",
+    "title": "Solar charging for always-on sensors",
+    "source": "EE Times",
+    "date": "2026-08-25",
+    "summary": "Indoor photovoltaics now yield enough at 200 lux to run a duty-cycled sensor indefinitely.",
+    "content": "At 200 lux, a normally lit room rather than a window, a palm-sized indoor cell now delivers enough to keep a duty-cycled sensor node running without ever seeing a charger.\n\nThe constraint has moved from harvest to storage: the supercapacitor sized for the overnight gap is now the largest component on the board.\n\nThat is a better problem to have, but it is still a problem, and it puts a hard floor under how small these nodes can get."
+  },
+  {
+    "id": "n16",
+    "title": "Why your OTA update bricked 0.3% of the fleet",
+    "source": "The Pragmatic Engineer",
+    "date": "2026-08-25",
+    "summary": "Partial flash writes, brownouts, and the rollback path nobody tested.",
+    "content": "Every over-the-air update is a distributed systems problem wearing a firmware costume. The failure modes are the familiar ones: partial writes, interrupted transactions, and a recovery path that was written but never exercised.\n\nThe most useful line in the post-mortem is about the last of these. The rollback code had been in the tree for two years and had never once run on real hardware.\n\nThe fix was not clever. They added a test that flashes a deliberately corrupt image and asserts the device comes back."
+  },
+  {
+    "id": "n17",
+    "title": "Reading speed on paper versus screens: the gap closes",
+    "source": "Psychological Science",
+    "date": "2026-08-24",
+    "summary": "Once refresh artefacts are removed, comprehension differences fall within noise.",
+    "content": "The long-reported comprehension advantage for paper shrinks substantially once the comparison controls for display artefacts rather than for the medium.\n\nWith those controlled, the remaining difference falls inside the noise. The authors are careful to note this says nothing about devices that also deliver notifications.\n\nThat caveat is doing most of the work. The studies that found the largest paper advantage were mostly run on general-purpose devices, where the medium was never the only variable."
+  },
+  {
+    "id": "n18",
+    "title": "Building a study device from spare parts",
+    "source": "Make",
+    "date": "2026-08-24",
+    "summary": "A weekend project: an e-ink panel, an ESP32, a battery, and about forty lines of glue.",
+    "content": "The build is deliberately unambitious. A salvaged panel, a common microcontroller module, a single-cell battery, and enough code to draw a card and read a touch.\n\nWhat the author wants to demonstrate is not the hardware but the ceiling: how much of a usable study device is now available to someone with a soldering iron and a free Saturday.\n\nThe answer is most of it. What is missing is not components but the last twenty percent of software that turns a demo into something you would actually carry."
+  }
+]
