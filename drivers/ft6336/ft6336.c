@@ -22,14 +22,17 @@ static const char *TAG = "ft6336";
 #define FT6336_REG_TOUCH1_XL        0x04
 #define FT6336_REG_TOUCH1_YH        0x05
 #define FT6336_REG_TOUCH1_YL        0x06
-#define FT6336_REG_TOUCH2_XH        0x07
-#define FT6336_REG_TOUCH2_XL        0x08
-#define FT6336_REG_TOUCH2_YH        0x09
-#define FT6336_REG_TOUCH2_YL        0x0A
-#define FT6336_REG_TOUCH1_WEIGHT    0x0B
-#define FT6336_REG_TOUCH2_WEIGHT    0x0C
-#define FT6336_REG_TOUCH1_AREA      0x0D
-#define FT6336_REG_TOUCH2_AREA      0x0E
+#define FT6336_REG_TOUCH1_WEIGHT    0x07
+#define FT6336_REG_TOUCH1_MISC      0x08
+#define FT6336_REG_TOUCH2_XH        0x09
+#define FT6336_REG_TOUCH2_XL        0x0A
+#define FT6336_REG_TOUCH2_YH        0x0B
+#define FT6336_REG_TOUCH2_YL        0x0C
+#define FT6336_REG_TOUCH2_WEIGHT    0x0D
+#define FT6336_REG_TOUCH2_MISC      0x0E
+
+#define FT6336_TOUCH_REPORT_LEN     (FT6336_REG_TOUCH2_MISC - FT6336_REG_GEST_ID + 1)
+#define FT6336_REPORT_INDEX(reg)    ((reg) - FT6336_REG_GEST_ID)
 
 #define FT6336_REG_THRESHOLD        0x80   // touch threshold
 #define FT6336_REG_SAMPLE_RATE      0x88   // report rate
@@ -83,6 +86,15 @@ static void ft6336_parse_point(const uint8_t *regs, int offset,
     point->x = ((uint16_t)(xh & 0x0F) << 8) | xl;
     point->y = ((uint16_t)(yh & 0x0F) << 8) | yl;
     point->event = (ft6336_event_t)((xh >> 6) & 0x03);
+    point->weight = regs[offset + 4];
+    point->area = (regs[offset + 5] >> 4) & 0x0F;
+    point->id = (yh >> 4) & 0x0F;
+}
+
+static bool ft6336_point_is_active(const ft6336_touch_point_t *point)
+{
+    return point->event == FT6336_EVENT_DOWN ||
+           point->event == FT6336_EVENT_CONTACT;
 }
 
 // ─── Public API ────────────────────────────────────────────────────────
@@ -221,32 +233,33 @@ esp_err_t ft6336_read(ft6336_touch_data_t *data)
     }
     memset(data, 0, sizeof(*data));
 
-    // Read registers 0x01–0x0E in one burst (gesture ID + status + 2 touch points)
-    uint8_t regs[14];
+    // Read the status and both complete point records in one I2C transaction so
+    // coordinates from simultaneous contacts belong to the same controller frame.
+    uint8_t regs[FT6336_TOUCH_REPORT_LEN];
     esp_err_t ret = ft6336_read_regs(FT6336_REG_GEST_ID, regs, sizeof(regs));
     if (ret != ESP_OK) {
         return ret;
     }
 
-    data->gesture_id = regs[0];            // reg 0x01
-    data->count      = regs[1] & 0x0F;     // reg 0x02, low nibble
+    data->gesture_id = regs[FT6336_REPORT_INDEX(FT6336_REG_GEST_ID)];
+    uint8_t reported_count = regs[FT6336_REPORT_INDEX(FT6336_REG_TD_STATUS)] & 0x0F;
 
-    if (data->count > 2) {
-        data->count = 2;  // FT6336U supports max 2 points
+    if (reported_count > FT6336_MAX_TOUCH_POINTS) {
+        ESP_LOGW(TAG, "Invalid touch count reported: %u", (unsigned)reported_count);
+        return ESP_ERR_INVALID_RESPONSE;
     }
 
-    // Touch 1: regs[2..7]  → registers 0x03–0x08
-    if (data->count >= 1) {
-        ft6336_parse_point(regs, 2, &data->points[0]);
-        data->points[0].weight = regs[10];  // 0x0B
-        data->points[0].area   = regs[12];  // 0x0D
-    }
+    const uint8_t point_offsets[FT6336_MAX_TOUCH_POINTS] = {
+        FT6336_REPORT_INDEX(FT6336_REG_TOUCH1_XH),
+        FT6336_REPORT_INDEX(FT6336_REG_TOUCH2_XH),
+    };
 
-    // Touch 2: regs[6..11] → registers 0x07–0x0C
-    if (data->count >= 2) {
-        ft6336_parse_point(regs, 6, &data->points[1]);
-        data->points[1].weight = regs[11];  // 0x0C
-        data->points[1].area   = regs[13];  // 0x0E
+    for (uint8_t i = 0; i < reported_count; i++) {
+        ft6336_touch_point_t point;
+        ft6336_parse_point(regs, point_offsets[i], &point);
+        if (ft6336_point_is_active(&point)) {
+            data->points[data->count++] = point;
+        }
     }
 
     return ESP_OK;

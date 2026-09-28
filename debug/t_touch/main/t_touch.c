@@ -83,8 +83,8 @@ void app_main(void)
 
             for (int i = 0; i < data.count; i++) {
                 ft6336_touch_point_t *p = &data.points[i];
-                ESP_LOGI(TAG, "  Point %d: X=%4u Y=%4u Weight=%3u Area=%2u Event=%s",
-                         i, p->x, p->y, p->weight, p->area, event_str(p->event));
+                ESP_LOGI(TAG, "  Point %d: ID=%u X=%4u Y=%4u Weight=%3u Area=%2u Event=%s",
+                         i, p->id, p->x, p->y, p->weight, p->area, event_str(p->event));
             }
         }
 

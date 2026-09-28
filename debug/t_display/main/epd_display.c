@@ -6,37 +6,25 @@
 //
 // Low-level transport: ESP-IDF hardware SPI (mode 0, MSB first) + direct GPIO.
 //
-// Board selection (compile definition, set in the project's main/CMakeLists.txt):
-//   default                            -> boards/esp32s3/esp32s3_devkit.h
-//                                         GPIO 11=MOSI, 12=SCK, 15=CS, 6=DC, 7=RST, 8=BUSY
-//   -DEPD_BOARD_HELTEC_WIRELESS_STICK_V3 -> boards/heltec_wireless_stick_v3/heltec_wireless_stick_v3.h
-//                                         GPIO 35=MOSI, 36=SCK, 34=CS, 6=DC, 7=RST, 3=BUSY
+// Board: boards/esp32s3/esp32s3_devkit.h
+//   GPIO 11=MOSI, 12=SCK, 15=CS, 6=DC, 7=RST, 8=BUSY (SPI2)
 // SPI clock can be overridden with -DEPD_SPI_CLOCK_HZ=<hz> (default 10 MHz).
 
 #include <string.h>
 #include "epd_display.h"
 
-#if defined(EPD_BOARD_HELTEC_WIRELESS_STICK_V3)
-#include "heltec_wireless_stick_v3.h"
-#define EPD_PIN_MOSI    HELTEC_STICK_PIN_EPD_MOSI
-#define EPD_PIN_SCK     HELTEC_STICK_PIN_EPD_SCK
-#define EPD_PIN_CS      HELTEC_STICK_PIN_EPD_CS
-#define EPD_PIN_DC      HELTEC_STICK_PIN_EPD_DC
-#define EPD_PIN_RST     HELTEC_STICK_PIN_EPD_RST
-#define EPD_PIN_BUSY    HELTEC_STICK_PIN_EPD_BUSY
-#define EPD_SPI_HOST    HELTEC_STICK_EPD_SPI_HOST
-#define EPD_BOARD_NAME  "heltec_wireless_stick_v3"
-#else
 #include "esp32s3_devkit.h"
-#define EPD_PIN_MOSI    DEVKIT_PIN_EPD_MOSI
-#define EPD_PIN_SCK     DEVKIT_PIN_EPD_SCK
-#define EPD_PIN_CS      DEVKIT_PIN_EPD_CS
-#define EPD_PIN_DC      DEVKIT_PIN_EPD_DC
-#define EPD_PIN_RST     DEVKIT_PIN_EPD_RST
-#define EPD_PIN_BUSY    DEVKIT_PIN_EPD_BUSY
-#define EPD_SPI_HOST    DEVKIT_EPD_SPI_HOST
-#define EPD_BOARD_NAME  "esp32s3_devkit"
-#endif
+#define EPD_PIN_MOSI            DEVKIT_PIN_EPD_MOSI
+#define EPD_PIN_SCK             DEVKIT_PIN_EPD_SCK
+#define EPD_PIN_CS              DEVKIT_PIN_EPD_CS
+#define EPD_PIN_DC              DEVKIT_PIN_EPD_DC
+#define EPD_PIN_RST             DEVKIT_PIN_EPD_RST
+#define EPD_PIN_BUSY            DEVKIT_PIN_EPD_BUSY
+#define EPD_RST_ACTIVE_LEVEL    0       // reset asserted low (Arduino ref)
+#define EPD_BUSY_ACTIVE_LEVEL   1       // busy while high (Arduino ref)
+#define EPD_BUSY_PULLUP         1
+#define EPD_SPI_HOST            DEVKIT_EPD_SPI_HOST
+#define EPD_BOARD_NAME          "esp32s3_devkit"
 
 #ifndef EPD_SPI_CLOCK_HZ
 #define EPD_SPI_CLOCK_HZ    (10 * 1000 * 1000)  // Arduino ref uses 10 MHz
@@ -76,6 +64,12 @@ static void spi_write_bytes(const uint8_t *data, uint32_t len)
 {
     // Transmit in 4096-byte chunks via DMA for efficiency.
     // ESP-IDF SPI driver handles polling vs DMA automatically.
+    //
+    // No explicit yield here: a chunk this size goes out as an interrupt-driven
+    // DMA transfer, so spi_device_transmit() blocks on a semaphore and already
+    // lets other tasks (and the watchdog) run. The vTaskDelay(1) that used to
+    // sit at the bottom of this loop cost a full tick per chunk — 24 ticks
+    // (~240 ms at 100 Hz) for a two-plane frame, all of it idle waiting.
     uint32_t offset = 0;
     while (offset < len) {
         uint32_t chunk = (len - offset) > 4096 ? 4096 : (len - offset);
@@ -85,7 +79,6 @@ static void spi_write_bytes(const uint8_t *data, uint32_t len)
         };
         spi_device_transmit(spi_dev, &t);
         offset += chunk;
-        vTaskDelay(1);  // yield to prevent watchdog timeout
     }
 }
 
@@ -134,11 +127,11 @@ void epd_gpio_config(void)
     };
     gpio_config(&io_conf);
 
-    // Configure BUSY pin as input
+    // Configure BUSY pin as input (pull-up per board definition)
     gpio_config_t busy_conf = {
         .pin_bit_mask = (1ULL << EPD_PIN_BUSY),
         .mode = GPIO_MODE_INPUT,
-        .pull_up_en = GPIO_PULLUP_ENABLE,
+        .pull_up_en = EPD_BUSY_PULLUP ? GPIO_PULLUP_ENABLE : GPIO_PULLUP_DISABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
         .intr_type = GPIO_INTR_DISABLE,
     };
@@ -147,7 +140,7 @@ void epd_gpio_config(void)
     // Initial pin states
     gpio_set_level(EPD_PIN_CS, 1);   // CS inactive
     gpio_set_level(EPD_PIN_DC, 0);
-    gpio_set_level(EPD_PIN_RST, 1);
+    gpio_set_level(EPD_PIN_RST, !EPD_RST_ACTIVE_LEVEL);   // reset de-asserted
 
     // Configure SPI bus
     spi_bus_config_t bus_cfg = {
@@ -177,14 +170,12 @@ void epd_gpio_config(void)
 
 bool epd_is_busy(void)
 {
-    return (gpio_get_level(EPD_PIN_BUSY) == 1);
+    return (gpio_get_level(EPD_PIN_BUSY) == EPD_BUSY_ACTIVE_LEVEL);
 }
 
 static void epd_read_busy(void)
 {
-    while (1) {
-        if (gpio_get_level(EPD_PIN_BUSY) == 0)
-            break;
+    while (epd_is_busy()) {
         delay_xms(10);
     }
 }
@@ -193,9 +184,9 @@ static void epd_read_busy(void)
 
 static void epd_reset(void)
 {
-    gpio_set_level(EPD_PIN_RST, 0);
+    gpio_set_level(EPD_PIN_RST, EPD_RST_ACTIVE_LEVEL);    // assert reset
     delay_xms(10);
-    gpio_set_level(EPD_PIN_RST, 1);
+    gpio_set_level(EPD_PIN_RST, !EPD_RST_ACTIVE_LEVEL);   // release reset
     delay_xms(10);
 }
 
@@ -465,18 +456,28 @@ void EPD_WhiteScreen_ALL(const unsigned char *datas)
 }
 
 // Fast update display
+//
+// Both planes go out through epd_write_data_pkg() (DMA, 4096-byte bursts).
+// The byte sequence on the wire is identical to the original per-byte loop;
+// only the batching changed. That loop cost ~20 us of driver overhead per
+// byte — 96000 transactions ≈ 1.9 s, dwarfing the 1.5 s panel waveform.
 void EPD_WhiteScreen_ALL_Fast(const unsigned char *datas)
 {
-    unsigned int i;
+    // 0x26 (the "old" plane) is a constant 0xff. Send it from one reusable
+    // block instead of allocating a second EPD_ARRAY-sized buffer.
+    static uint8_t white_chunk[4096];
+    memset(white_chunk, 0xff, sizeof(white_chunk));
+
     epd_write_cmd(0x24);
-    for (i = 0; i < EPD_ARRAY; i++) {
-        epd_write_data(datas[i]);
-    }
+    epd_write_data_pkg(datas, EPD_ARRAY);
 
     epd_write_cmd(0x26);
-    for (i = 0; i < EPD_ARRAY; i++) {
-        epd_write_data(0xff);
+    for (uint32_t sent = 0; sent < EPD_ARRAY; sent += sizeof(white_chunk)) {
+        uint32_t remaining = EPD_ARRAY - sent;
+        epd_write_data_pkg(white_chunk,
+                           remaining > sizeof(white_chunk) ? sizeof(white_chunk) : remaining);
     }
+
     EPD_Update_Fast();
 }
 
