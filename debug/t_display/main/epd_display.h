@@ -30,6 +30,7 @@ void EPD_DeepSleep(void);
 // Partial update display
 void EPD_SetRAMValue_BaseMap(const unsigned char *datas);
 void EPD_Dis_PartAll(const unsigned char *datas);
+void EPD_Dis_PartAll_Async(const unsigned char *datas);
 void EPD_Dis_Part(unsigned int x_start, unsigned int y_start,
                   const unsigned char *datas,
                   unsigned int PART_COLUMN, unsigned int PART_LINE);

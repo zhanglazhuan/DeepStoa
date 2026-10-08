@@ -4,8 +4,9 @@ cmake_minimum_required(VERSION 3.16)
 
 set(ENV{IDF_TARGET} esp32s3)
 
-# Point to drivers/ft6336
+# Point to the DeepStoa v1 I/O expander and touch controller drivers.
 set(EXTRA_COMPONENT_DIRS
+    ${CMAKE_SOURCE_DIR}/../../drivers/aw9523
     ${CMAKE_SOURCE_DIR}/../../drivers/ft6336
 )
 

@@ -1,11 +1,8 @@
 // debug/t_display/main/t_display.c
-// E-ink display test: GDEM0397T81P via ESP-IDF hardware SPI + direct GPIO
+// E-ink display test: GDEM0397T81P on the DeepStoa v1 board
 //
-// Board: ESP32-S3 DevKit (wiring matches Arduino reference)
-// Pin definitions: boards/esp32s3/esp32s3_devkit.h
-//
-// This file uses the display driver logic (init sequences, update functions)
-// preserved from drivers/gdem0397t81p, with hardware SPI transport.
+// SPI is connected directly to the ESP32-S3. DC, RESET and POWER are
+// controlled through the AW9523 according to boards/esp32s3/deepstoa_v1.h.
 
 #include <stdio.h>
 #include <string.h>
@@ -14,7 +11,6 @@
 #include "freertos/task.h"
 #include "esp_log.h"
 
-#include "esp32s3_devkit.h"
 #include "epd_display.h"
 
 static const char *TAG = "t_display";

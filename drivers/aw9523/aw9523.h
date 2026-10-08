@@ -27,6 +27,17 @@ esp_err_t aw9523_init(uint8_t i2c_port, gpio_num_t sda_pin, gpio_num_t scl_pin,
                       gpio_num_t rst_pin, uint8_t i2c_addr);
 
 /**
+ * @brief Return the I2C master bus owned by the AW9523 driver.
+ *
+ * The DeepStoa v1 touch controller shares this bus with the AW9523. The
+ * returned value is an i2c_master_bus_handle_t exposed as void * so callers do
+ * not need to include the private I2C driver type in this header.
+ *
+ * @return Bus handle, or NULL before aw9523_init() creates the bus.
+ */
+void *aw9523_get_i2c_bus(void);
+
+/**
  * @brief Software reset the AW9523.
  */
 void aw9523_reset(void);

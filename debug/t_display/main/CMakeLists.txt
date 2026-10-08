@@ -3,4 +3,5 @@ idf_component_register(
     SRCS "t_display.c" "epd_display.c"
     INCLUDE_DIRS "." "../../../boards/esp32s3"
     REQUIRES driver
+    PRIV_REQUIRES aw9523
 )

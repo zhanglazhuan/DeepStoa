@@ -1,10 +1,9 @@
 // debug/t_quality/main/t_quality.c
-// E-ink image-quality test: GDEM0397T81P via ESP-IDF hardware SPI + direct GPIO
+// E-ink image-quality test: GDEM0397T81P on DeepStoa v1
 //
-// Board: selected in main/CMakeLists.txt (default = boards/esp32s3/esp32s3_devkit.h)
-//   GPIO 11=MOSI, 12=SCK, 15=CS, 6=DC, 7=RST, 8=BUSY
-// Button: on-board BOOT/PRG button on GPIO0 (active low, internal pull-up) — same on both boards.
-// Touch:  FT6336U on I2C0 (SDA=41, SCL=42, RST=5), optional — the test still runs without it.
+// Board: boards/esp32s3/deepstoa_v1.h
+// Button: POWER on GPIO39 (active high, internal pull-down).
+// Touch: FT6336U on shared I2C0 (SDA=17, SCL=18, RST via AW9523), optional.
 //
 // Each button press cycles the panel through three patterns:
 //   1. all black
@@ -29,13 +28,14 @@
 #include "esp_timer.h"
 
 #include "epd_display.h"
-#include "esp32s3_devkit.h"
+#include "deepstoa_v1.h"
+#include "aw9523.h"
 #include "ft6336.h"
 
 static const char *TAG = "t_quality";
 
-#define BUTTON_GPIO         GPIO_NUM_0
-#define BUTTON_ACTIVE       0           // active low
+#define BUTTON_GPIO         DEEPV1_PIN_BUTTON_POWER
+#define BUTTON_ACTIVE       DEEPV1_BUTTON_ACTIVE_LEVEL
 #define POLL_MS             10          // button + touch polling period
 #define BUTTON_DEBOUNCE_MS  50
 #define CHECKER_CELL_PX     32
@@ -318,12 +318,12 @@ static void button_gpio_config(void)
     gpio_config_t cfg = {
         .pin_bit_mask = 1ULL << BUTTON_GPIO,
         .mode = GPIO_MODE_INPUT,
-        .pull_up_en = GPIO_PULLUP_ENABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_ENABLE,
         .intr_type = GPIO_INTR_DISABLE,
     };
     ESP_ERROR_CHECK(gpio_config(&cfg));
-    // A button held at boot (e.g. BOOT still down after flashing) must not count as a press.
+    // A button held while the test starts must not count as a new press.
     s_button_was_down = (gpio_get_level(BUTTON_GPIO) == BUTTON_ACTIVE);
 }
 
@@ -343,13 +343,16 @@ static bool button_poll_press(void)
 
 static bool touch_init(void)
 {
-    esp_err_t ret = ft6336_init(DEVKIT_TOUCH_I2C_PORT,
-                                DEVKIT_PIN_TOUCH_SDA,
-                                DEVKIT_PIN_TOUCH_SCL,
-                                DEVKIT_PIN_TOUCH_RST,
-                                DEVKIT_TOUCH_I2C_ADDR);
+    aw9523_set_pin(DEEPV1_AW_PIN_TOUCH_RST, 0);
+    vTaskDelay(pdMS_TO_TICKS(10));
+    aw9523_set_pin(DEEPV1_AW_PIN_TOUCH_RST, 1);
+    vTaskDelay(pdMS_TO_TICKS(350));
+
+    esp_err_t ret = ft6336_init_shared(aw9523_get_i2c_bus(), GPIO_NUM_NC,
+                                       DEEPV1_TOUCH_I2C_ADDR);
     if (ret != ESP_OK) {
-        ESP_LOGW(TAG, "ft6336_init failed: %s — touch disabled, button still works", esp_err_to_name(ret));
+        ESP_LOGW(TAG, "ft6336_init_shared failed: %s — touch disabled, button still works",
+                 esp_err_to_name(ret));
         return false;
     }
     return true;
@@ -407,7 +410,7 @@ void app_main(void)
     ESP_LOGI(TAG, "PASS: GPIO, SPI and button (GPIO%d) initialized", BUTTON_GPIO);
 
     ESP_LOGI(TAG, "Step 2: Init FT6336 touch on I2C%d (SDA=%d SCL=%d)...",
-             DEVKIT_TOUCH_I2C_PORT, DEVKIT_PIN_TOUCH_SDA, DEVKIT_PIN_TOUCH_SCL);
+             DEEPV1_TOUCH_I2C_PORT, DEEPV1_PIN_TOUCH_SDA, DEEPV1_PIN_TOUCH_SCL);
     bool touch_ok = touch_init();
     if (touch_ok) {
         ESP_LOGI(TAG, "PASS: touch initialized");

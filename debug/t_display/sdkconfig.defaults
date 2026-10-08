@@ -5,6 +5,10 @@
 # Target: ESP32-S3 (DeepStoa v1 board)
 CONFIG_IDF_TARGET_ESP32S3=y
 
+# DeepStoa v1 has 16 MB flash and uses the native USB console.
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+
 # Set main task stack size to 8192 (enough for test flow)
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
 

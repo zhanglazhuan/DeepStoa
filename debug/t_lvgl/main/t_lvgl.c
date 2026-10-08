@@ -9,8 +9,9 @@
 #include "freertos/task.h"
 #include "esp_log.h"
 
-#include "esp32s3_devkit.h"
-#include "Display_EPD_W21.h"
+#include "deepstoa_v1.h"
+#include "aw9523.h"
+#include "epd_display.h"
 #include "ft6336.h"
 #include "lvgl.h"
 #include "lv_tab.h"
@@ -101,9 +102,13 @@ static void touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
 
 static void touch_init(void)
 {
-    esp_err_t ret = ft6336_init(DEVKIT_TOUCH_I2C_PORT,
-                                DEVKIT_PIN_TOUCH_SDA, DEVKIT_PIN_TOUCH_SCL,
-                                DEVKIT_PIN_TOUCH_RST, DEVKIT_TOUCH_I2C_ADDR);
+    aw9523_set_pin(DEEPV1_AW_PIN_TOUCH_RST, 0);
+    vTaskDelay(pdMS_TO_TICKS(10));
+    aw9523_set_pin(DEEPV1_AW_PIN_TOUCH_RST, 1);
+    vTaskDelay(pdMS_TO_TICKS(350));
+
+    esp_err_t ret = ft6336_init_shared(aw9523_get_i2c_bus(), GPIO_NUM_NC,
+                                       DEEPV1_TOUCH_I2C_ADDR);
     if (ret != ESP_OK) { ESP_LOGW(TAG, "Touch init failed (0x%X)", ret); return; }
     lv_indev_t *indev = lv_indev_create();
     lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);

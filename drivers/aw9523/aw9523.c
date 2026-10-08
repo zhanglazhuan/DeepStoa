@@ -94,27 +94,16 @@ esp_err_t aw9523_init(uint8_t i2c_port, gpio_num_t sda_pin, gpio_num_t scl_pin,
         ESP_LOGI(TAG, "HW reset done (GPIO%d)", rst_pin);
     }
 
-    // --- I2C bus scan (all addresses) ---
-    ESP_LOGI(TAG, "Scanning I2C bus (port %d, SDA=GPIO%d, SCL=GPIO%d)...",
-             i2c_port, sda_pin, scl_pin);
-    int devices_found = 0;
-    // Scan in reverse so we check higher addresses first (some devices respond slower)
-    for (int addr = 1; addr < 127; addr++) {
-        esp_err_t probe_ret = i2c_master_probe(g_i2c_bus, addr, pdMS_TO_TICKS(20));
-        if (probe_ret == ESP_OK) {
-            ESP_LOGI(TAG, "  Device found at 0x%02X (7-bit)", addr);
-            devices_found++;
-        }
+    // i2c_master_probe() takes milliseconds, not FreeRTOS ticks.
+    ESP_LOGI(TAG, "Probing AW9523 at 0x%02X (port %d, SDA=GPIO%d, SCL=GPIO%d)...",
+             i2c_addr, i2c_port, sda_pin, scl_pin);
+    ret = i2c_master_probe(g_i2c_bus, i2c_addr, 50);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "AW9523 probe failed at 0x%02X: %s",
+                 i2c_addr, esp_err_to_name(ret));
+        return ret;
     }
-    if (devices_found == 0) {
-        ESP_LOGE(TAG, "No I2C devices found on bus! (scanned 1..126)");
-        ESP_LOGE(TAG, "Possible causes:");
-        ESP_LOGE(TAG, "  1. SDA/SCL pins swapped or wrong GPIO numbers");
-        ESP_LOGE(TAG, "  2. Pull-up resistors missing on SDA/SCL");
-        ESP_LOGE(TAG, "  3. AW9523 not powered or held in reset");
-        ESP_LOGE(TAG, "  4. I2C port conflict with another driver");
-        return ESP_ERR_TIMEOUT;
-    }
+    ESP_LOGI(TAG, "Device found at 0x%02X (7-bit)", i2c_addr);
 
     // --- Add AW9523 device to bus ---
     // Match reference: 400 kHz, no scl_wait_us, no disable_ack_check
@@ -161,21 +150,25 @@ esp_err_t aw9523_init(uint8_t i2c_port, gpio_num_t sda_pin, gpio_num_t scl_pin,
     aw9523_write_reg(AW9523_REG_LEDMODE_P0, 0x00);
     aw9523_write_reg(AW9523_REG_LEDMODE_P1, 0x00);
 
-    // P0 pin directions: bit5=INT(input), others output
-    g_dir_cache[0] = (1 << 5);
-    g_out_cache[0] = 0x00;
-    aw9523_write_reg(AW9523_REG_DIR_P0, g_dir_cache[0]);
+    // Match the pre-production board schematic. Preload safe output levels while
+    // every pin is still an input, then enable only the intended outputs.
+    g_dir_cache[0] = DEEPV1_AW_P0_INPUT_MASK;
+    g_out_cache[0] = DEEPV1_AW_P0_SAFE_OUTPUT;
+    g_dir_cache[1] = DEEPV1_AW_P1_INPUT_MASK;
+    g_out_cache[1] = DEEPV1_AW_P1_SAFE_OUTPUT;
     aw9523_write_reg(AW9523_REG_OUTPUT_P0, g_out_cache[0]);
-
-    // P1 pin directions: bit6=BUSY(input), others output. CS(P1.4)=high (inactive)
-    g_dir_cache[1] = (1 << 6);
-    g_out_cache[1] = (1 << 4);
-    aw9523_write_reg(AW9523_REG_DIR_P1, g_dir_cache[1]);
     aw9523_write_reg(AW9523_REG_OUTPUT_P1, g_out_cache[1]);
+    aw9523_write_reg(AW9523_REG_DIR_P0, g_dir_cache[0]);
+    aw9523_write_reg(AW9523_REG_DIR_P1, g_dir_cache[1]);
 
     ESP_LOGI(TAG, "Initialized at addr 0x%02X (I2C port %d, 400 kHz)",
              i2c_addr, i2c_port);
     return ESP_OK;
+}
+
+void *aw9523_get_i2c_bus(void)
+{
+    return g_i2c_bus;
 }
 
 void aw9523_reset(void)
