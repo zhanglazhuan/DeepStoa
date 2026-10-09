@@ -4,6 +4,11 @@ cmake_minimum_required(VERSION 3.16)
 set(EXTRA_COMPONENT_DIRS
     ${CMAKE_SOURCE_DIR}/drivers/aw9523
     ${CMAKE_SOURCE_DIR}/drivers/board_audio
+    ${CMAKE_SOURCE_DIR}/drivers/qmi8658
+    ${CMAKE_SOURCE_DIR}/drivers/shtc3
+    ${CMAKE_SOURCE_DIR}/drivers/es8311
+    ${CMAKE_SOURCE_DIR}/drivers/axp2101
+    ${CMAKE_SOURCE_DIR}/drivers/pcf85063
     ${CMAKE_SOURCE_DIR}/drivers/ft6336
     ${CMAKE_SOURCE_DIR}/system/controller
     ${CMAKE_SOURCE_DIR}/system/appmgr
@@ -12,6 +17,7 @@ set(EXTRA_COMPONENT_DIRS
     ${CMAKE_SOURCE_DIR}/system/events
     ${CMAKE_SOURCE_DIR}/system/logs
     ${CMAKE_SOURCE_DIR}/system/monitor
+    ${CMAKE_SOURCE_DIR}/system/battery
     ${CMAKE_SOURCE_DIR}/system/wifi
     ${CMAKE_SOURCE_DIR}/system/timeservice
     ${CMAKE_SOURCE_DIR}/system/alarm
@@ -28,6 +34,12 @@ set(EXTRA_COMPONENT_DIRS
     ${CMAKE_SOURCE_DIR}/apps/news
     ${CMAKE_SOURCE_DIR}/apps/reader
     ${CMAKE_SOURCE_DIR}/apps/todolist
+    ${CMAKE_SOURCE_DIR}/apps/lxj_clock
+    ${CMAKE_SOURCE_DIR}/apps/lxj_todolist
+    ${CMAKE_SOURCE_DIR}/apps/lxj_picture
+    ${CMAKE_SOURCE_DIR}/apps/lxj_audio
+    ${CMAKE_SOURCE_DIR}/apps/lxj_fiction
+    ${CMAKE_SOURCE_DIR}/apps/lxj
 )
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)

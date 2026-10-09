@@ -1,0 +1,9 @@
+大雨,heavy_rain
+多云,partly_cloudy
+雷雨,thunderstorm
+晴,clear
+小雨,light_rain
+下雪,snow
+中雨,moderate_rain
+阴,overcast
+扬沙,dust_storm

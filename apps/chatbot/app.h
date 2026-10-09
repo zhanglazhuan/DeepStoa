@@ -22,6 +22,10 @@ extern ChatbotApp g_chatbot_app;
 
 void chatbot_init(void);
 
+/* Register the same Chatbot lifecycle under the independent LXJ app name.
+ * Both names intentionally share one model/controller/audio owner. */
+void chatbot_lxj_init(void);
+
 #ifdef __cplusplus
 }
 #endif

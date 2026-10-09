@@ -54,7 +54,21 @@ static application_t chatbot_application = {
     .category = APP_CATEGORY_SYSTEM,
 };
 
+static application_t lxj_chat_application = {
+    .name = "LXJ Chat",
+    .icon = EPOS_LV_IMG_USE(app_chatbot_logo),
+    .start_func = chatbot_app_start,
+    .stop_func = chatbot_app_stop,
+    .back_func = chatbot_app_back,
+    .category = APP_CATEGORY_SYSTEM,
+};
+
 void chatbot_init(void) {
     app_manager_add_application(&chatbot_application);
     ESP_LOGI(TAG, "Chatbot app registered");
+}
+
+void chatbot_lxj_init(void) {
+    app_manager_add_application(&lxj_chat_application);
+    ESP_LOGI(TAG, "LXJ Chat alias registered");
 }
