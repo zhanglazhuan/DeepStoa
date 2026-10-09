@@ -182,9 +182,31 @@ bool epd_is_busy(void)
 
 static void epd_read_busy(void)
 {
+    const TickType_t start = xTaskGetTickCount();
+    const TickType_t timeout = pdMS_TO_TICKS(60000);
+    uint32_t samples = 0;
+
+    ESP_LOGI(TAG, "Waiting for BUSY GPIO%d to go low (level=%d)",
+             EPD_PIN_BUSY, gpio_get_level(EPD_PIN_BUSY));
     while (1) {
-        if (gpio_get_level(EPD_PIN_BUSY) == 0)
+        int level = gpio_get_level(EPD_PIN_BUSY);
+        if (level == 0) {
+            ESP_LOGI(TAG, "BUSY released after %lu ms",
+                     (unsigned long)pdTICKS_TO_MS(xTaskGetTickCount() - start));
             break;
+        }
+
+        if ((++samples % 100U) == 0U) {
+            ESP_LOGW(TAG, "BUSY still high after %lu ms (GPIO%d)",
+                     (unsigned long)pdTICKS_TO_MS(xTaskGetTickCount() - start),
+                     EPD_PIN_BUSY);
+        }
+
+        if ((xTaskGetTickCount() - start) >= timeout) {
+            ESP_LOGE(TAG, "BUSY timeout after 60s; check panel power, BUSY polarity, and pin mapping");
+            break;
+        }
+
         delay_xms(10);
     }
 }
@@ -244,9 +266,13 @@ static void EPD_Part_Update(void)
 
 void EPD_HW_Init(void)
 {
+    ESP_LOGI(TAG, "EPD init: reset");
     epd_reset();
+    ESP_LOGI(TAG, "EPD init: wait after reset");
     epd_read_busy();
+    ESP_LOGI(TAG, "EPD init: software reset");
     epd_write_cmd(0x12); // SWRESET
+    ESP_LOGI(TAG, "EPD init: wait after software reset");
     epd_read_busy();
 
     epd_write_cmd(0x18);

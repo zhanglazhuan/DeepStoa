@@ -18,7 +18,9 @@
 #include "driver/gpio.h"
 #include "esp_log.h"
 
+#include "esp32s3_devkit.h"
 #include "epd_display.h"
+#include "ft6336.h"
 
 static const char *TAG = "t_quality";
 
@@ -26,6 +28,7 @@ static const char *TAG = "t_quality";
 #define BUTTON_POLL_MS      10
 #define BUTTON_DEBOUNCE_MS  50
 #define CHECKER_CELL_PX     32
+#define TOUCH_POLL_MS       20
 
 typedef enum {
     PATTERN_BLACK = 0,
@@ -43,15 +46,19 @@ static uint8_t framebuffer[EPD_ARRAY];
 
 static void fill_checkerboard(uint8_t *buf)
 {
-    const int bytes_per_row = EPD_WIDTH / 8;
-    const int bytes_per_cell = CHECKER_CELL_PX / 8;  // 32px = 4 bytes, so cells are byte-aligned
+    /* GDEM0397T81P RAM is column-major: each column contains
+     * EPD_HEIGHT / 8 bytes, with 8 vertical pixels per byte.  A row-major
+     * buffer happens to work for solid fills but turns a checkerboard into
+     * diagonal/garbled blocks. */
+    const int bytes_per_col = EPD_HEIGHT / 8;
+    const int bytes_per_cell = CHECKER_CELL_PX / 8;
 
-    for (int y = 0; y < EPD_HEIGHT; y++) {
-        int cell_row = y / CHECKER_CELL_PX;
-        uint8_t *row = buf + y * bytes_per_row;
-        for (int b = 0; b < bytes_per_row; b++) {
-            int cell_col = b / bytes_per_cell;
-            row[b] = ((cell_row + cell_col) & 1) ? 0x00 : 0xFF;
+    for (int x = 0; x < EPD_WIDTH; x++) {
+        int cell_col = x / CHECKER_CELL_PX;
+        uint8_t *column = buf + x * bytes_per_col;
+        for (int byte_index = 0; byte_index < bytes_per_col; byte_index++) {
+            int cell_row = byte_index / bytes_per_cell;
+            column[byte_index] = ((cell_row + cell_col) & 1) ? 0x00 : 0xFF;
         }
     }
 }
@@ -95,22 +102,20 @@ static void button_gpio_config(void)
 }
 
 // Blocks until a debounced press (high -> low) is detected.
-static void button_wait_press(void)
+static bool button_poll_press(void)
 {
-    // Wait for release first so a held button does not auto-repeat.
-    while (gpio_get_level(BUTTON_GPIO) == 0) {
-        vTaskDelay(pdMS_TO_TICKS(BUTTON_POLL_MS));
+    static bool armed = true;
+    int level = gpio_get_level(BUTTON_GPIO);
+
+    if (level != 0) {
+        armed = true;
+        return false;
     }
 
-    while (1) {
-        if (gpio_get_level(BUTTON_GPIO) == 0) {
-            vTaskDelay(pdMS_TO_TICKS(BUTTON_DEBOUNCE_MS));
-            if (gpio_get_level(BUTTON_GPIO) == 0) {
-                return;
-            }
-        }
-        vTaskDelay(pdMS_TO_TICKS(BUTTON_POLL_MS));
-    }
+    if (!armed) return false;
+    armed = false;
+    vTaskDelay(pdMS_TO_TICKS(BUTTON_DEBOUNCE_MS));
+    return gpio_get_level(BUTTON_GPIO) == 0;
 }
 
 void app_main(void)
@@ -120,16 +125,47 @@ void app_main(void)
     ESP_LOGI(TAG, "Step 1: Init GPIO and hardware SPI...");
     epd_gpio_config();
     button_gpio_config();
-    ESP_LOGI(TAG, "PASS: GPIO, SPI and button (GPIO%d) initialized", BUTTON_GPIO);
+
+    ESP_LOGI(TAG, "Step 2: Init FT6336 touch (SDA=%d SCL=%d RST=%d)...",
+             DEVKIT_PIN_TOUCH_SDA, DEVKIT_PIN_TOUCH_SCL, DEVKIT_PIN_TOUCH_RST);
+    bool touch_ready = ft6336_init(DEVKIT_TOUCH_I2C_PORT,
+                                   DEVKIT_PIN_TOUCH_SDA,
+                                   DEVKIT_PIN_TOUCH_SCL,
+                                   DEVKIT_PIN_TOUCH_RST,
+                                   DEVKIT_TOUCH_I2C_ADDR) == ESP_OK;
+    ESP_LOGI(TAG, "%s: GPIO, SPI, button and touch initialized",
+             touch_ready ? "PASS" : "WARN (touch disabled)");
 
     pattern_t current = PATTERN_BLACK;
     show_pattern(current);
 
-    ESP_LOGI(TAG, "Press the GPIO%d button to cycle: black -> white -> checkerboard", BUTTON_GPIO);
+    ESP_LOGI(TAG, "Press GPIO%d or touch the panel to cycle: black -> white -> checkerboard",
+             BUTTON_GPIO);
 
+    bool touch_active = false;
     while (1) {
-        button_wait_press();
-        current = (current + 1) % PATTERN_COUNT;
-        show_pattern(current);
+        bool changed = button_poll_press();
+
+        if (touch_ready) {
+            ft6336_touch_data_t touch;
+            if (ft6336_read(&touch) == ESP_OK) {
+                bool active = touch.count > 0;
+                if (active && !touch_active) {
+                    ESP_LOGI(TAG, "Touch: count=%u x=%u y=%u",
+                             (unsigned)touch.count,
+                             (unsigned)touch.points[0].x,
+                             (unsigned)touch.points[0].y);
+                    changed = true;
+                }
+                touch_active = active;
+            }
+        }
+
+        if (changed) {
+            current = (current + 1) % PATTERN_COUNT;
+            show_pattern(current);
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(TOUCH_POLL_MS));
     }
 }
