@@ -18,6 +18,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <time.h>
 #include "lvgl.h"
 
 #ifdef __cplusplus
@@ -25,6 +26,22 @@ extern "C" {
 #endif
 
 /* ── 生命周期 ───────────────────────────────────────────────────────────── */
+
+/**
+ * 可选的板级 RTC 后端。
+ *
+ * RTC 驱动只负责寄存器和 BCD，不拥有系统时间策略；time_service 仍然是
+ * 唯一的时间源协调者。board 层在确认实际接线后，可在 time_service_init()
+ * 前注册它。未注册时继续使用原有的系统时钟/SNTP 路径。
+ */
+typedef struct {
+    bool (*read_utc)(time_t *out_utc, void *user_data);
+    bool (*write_utc)(time_t utc, void *user_data);
+    void *user_data;
+} time_service_rtc_backend_t;
+
+/** 注册可选 RTC 后端；传 NULL 可撤销。不会创建 I2C 总线。 */
+void time_service_set_rtc_backend(const time_service_rtc_backend_t *backend);
 
 /** 开机调一次。恢复时区与 12/24h 设置，建立 1 秒定时器（按分钟发 tick）。 */
 void time_service_init(void);

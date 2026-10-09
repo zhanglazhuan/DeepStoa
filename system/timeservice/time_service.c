@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <sys/time.h>
 
 #include "app_event.h"
 #include "esp_log.h"
@@ -32,6 +33,8 @@ static char        s_tz[40] = TZ_DEFAULT;
 static lv_timer_t *s_timer  = NULL;
 static int         s_last_fired_minute = -1;
 static bool        s_sntp_started = false;
+static time_service_rtc_backend_t s_rtc_backend;
+static bool        s_rtc_backend_set = false;
 
 /* ── 内部 ─────────────────────────────────────────────────────────────── */
 
@@ -65,6 +68,25 @@ static void apply_timezone(void)
     tzset();
 }
 
+static void try_restore_from_rtc(void)
+{
+    if (!s_rtc_backend_set || !s_rtc_backend.read_utc) return;
+
+    time_t utc = 0;
+    if (!s_rtc_backend.read_utc(&utc, s_rtc_backend.user_data) || utc <= 0) {
+        ESP_LOGW(TAG, "RTC backend has no valid time; keeping system clock");
+        return;
+    }
+
+    struct timeval tv = { .tv_sec = utc, .tv_usec = 0 };
+    if (settimeofday(&tv, NULL) != 0) {
+        ESP_LOGW(TAG, "RTC time could not be applied to system clock");
+        return;
+    }
+    s_synced = true;
+    ESP_LOGI(TAG, "Restored time from RTC (epoch=%lld)", (long long)utc);
+}
+
 /* ── WiFi 连上 → 触发对时 ─────────────────────────────────────────────── */
 
 static void on_app_event(app_event_t event, const void *data)
@@ -81,6 +103,16 @@ static void on_sntp_sync(struct timeval *tv)
     bool first = !s_synced;
     s_synced = true;
     ESP_LOGI(TAG, "SNTP synced — epoch=%lld", (long long)tv->tv_sec);
+
+    /* SNTP is the authoritative network source.  Persist the result in the
+     * optional RTC as well, so the next offline boot can restore a useful
+     * wall clock.  A failing/absent RTC must not affect the already-successful
+     * SNTP path. */
+    if (s_rtc_backend_set && s_rtc_backend.write_utc &&
+        !s_rtc_backend.write_utc(tv->tv_sec, s_rtc_backend.user_data)) {
+        ESP_LOGW(TAG, "SNTP synced, but RTC write-back failed");
+    }
+
     /* 第一次对上时，时间可能跳很远 —— 立刻广播一次，让状态栏和闹钟服务
      * 不用等到下一个整分才发现时间变了。 */
     if (first) fire_immediate_tick();
@@ -104,6 +136,18 @@ static void tick_cb(lv_timer_t *t)
 
 /* ── 公开 API ─────────────────────────────────────────────────────────── */
 
+void time_service_set_rtc_backend(const time_service_rtc_backend_t *backend)
+{
+    if (!backend) {
+        memset(&s_rtc_backend, 0, sizeof(s_rtc_backend));
+        s_rtc_backend_set = false;
+        return;
+    }
+
+    s_rtc_backend = *backend;
+    s_rtc_backend_set = s_rtc_backend.read_utc != NULL;
+}
+
 void time_service_init(void)
 {
     flash_store_init();   /* 幂等 */
@@ -113,6 +157,7 @@ void time_service_init(void)
     if (s_tz[0] == '\0') snprintf(s_tz, sizeof(s_tz), "%s", TZ_DEFAULT);
     s_fmt24 = flash_get_bool(TS_NS, KEY_FMT24, true);
     apply_timezone();
+    try_restore_from_rtc();
 
     app_event_register(on_app_event);
 

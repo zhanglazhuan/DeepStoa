@@ -7,6 +7,7 @@
  * ADC logic ported from debug/t_battery.
  */
 #include "battery.h"
+#include <string.h>
 #include "app_event.h"
 #include "lvgl.h"
 #include "driver/gpio.h"
@@ -31,6 +32,8 @@ static lv_timer_t                *s_timer;
 static int  s_last_bucket   = -1;          /* -1 => first sample always fires */
 static int  s_last_percent  = -1;
 static bool s_last_charging = false;
+static battery_backend_t s_backend;
+static bool s_backend_set;
 
 /* Li-ion open-circuit voltage (real mV after x2 divider) → percent. */
 static int battery_percent_from_mv(int mv)
@@ -84,9 +87,16 @@ static int battery_voltage_mv(void)
 
 static void battery_sample(void)
 {
-    int  mv       = battery_voltage_mv();
+    int mv = 0;
+    bool have_mv = s_backend_set && s_backend.read_voltage_mv &&
+                   s_backend.read_voltage_mv(&mv, s_backend.user_data);
+    if (!have_mv) mv = battery_voltage_mv();
+
     int  pct      = battery_percent_from_mv(mv);
-    bool charging = (gpio_get_level(PIN_CHAG) == 0);
+    bool charging = false;
+    bool have_charging = s_backend_set && s_backend.read_charging &&
+                         s_backend.read_charging(&charging, s_backend.user_data);
+    if (!have_charging) charging = (gpio_get_level(PIN_CHAG) == 0);
     int  bucket   = battery_bucket(pct);
 
     bool changed = (bucket != s_last_bucket) || (charging != s_last_charging);
@@ -110,36 +120,51 @@ static void battery_timer_cb(lv_timer_t *t)
 
 void battery_init(void)
 {
-    adc_oneshot_unit_init_cfg_t unit_cfg = { .unit_id = BAT_ADC_UNIT };
-    ESP_ERROR_CHECK(adc_oneshot_new_unit(&unit_cfg, &s_adc));
+    if (!s_backend_set) {
+        adc_oneshot_unit_init_cfg_t unit_cfg = { .unit_id = BAT_ADC_UNIT };
+        ESP_ERROR_CHECK(adc_oneshot_new_unit(&unit_cfg, &s_adc));
 
-    adc_oneshot_chan_cfg_t chan_cfg = {
-        .atten    = ADC_ATTEN_DB_12,
-        .bitwidth = ADC_BITWIDTH_12,
-    };
-    ESP_ERROR_CHECK(adc_oneshot_config_channel(s_adc, BAT_ADC_CHANNEL, &chan_cfg));
+        adc_oneshot_chan_cfg_t chan_cfg = {
+            .atten    = ADC_ATTEN_DB_12,
+            .bitwidth = ADC_BITWIDTH_12,
+        };
+        ESP_ERROR_CHECK(adc_oneshot_config_channel(s_adc, BAT_ADC_CHANNEL, &chan_cfg));
 
-    adc_cali_curve_fitting_config_t cali_cfg = {
-        .unit_id  = BAT_ADC_UNIT,
-        .atten    = ADC_ATTEN_DB_12,
-        .bitwidth = ADC_BITWIDTH_12,
-    };
-    ESP_ERROR_CHECK(adc_cali_create_scheme_curve_fitting(&cali_cfg, &s_cali));
+        adc_cali_curve_fitting_config_t cali_cfg = {
+            .unit_id  = BAT_ADC_UNIT,
+            .atten    = ADC_ATTEN_DB_12,
+            .bitwidth = ADC_BITWIDTH_12,
+        };
+        ESP_ERROR_CHECK(adc_cali_create_scheme_curve_fitting(&cali_cfg, &s_cali));
 
-    gpio_config_t io = {
-        .intr_type    = GPIO_INTR_DISABLE,
-        .mode         = GPIO_MODE_INPUT,
-        .pin_bit_mask = BIT64(PIN_CHAG),
-        .pull_up_en   = GPIO_PULLUP_ENABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
-    };
-    ESP_ERROR_CHECK(gpio_config(&io));
+        gpio_config_t io = {
+            .intr_type    = GPIO_INTR_DISABLE,
+            .mode         = GPIO_MODE_INPUT,
+            .pin_bit_mask = BIT64(PIN_CHAG),
+            .pull_up_en   = GPIO_PULLUP_ENABLE,
+            .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        };
+        ESP_ERROR_CHECK(gpio_config(&io));
+    }
 
     battery_sample();                       /* immediate — initialize the icon */
     s_timer = lv_timer_create(battery_timer_cb, BAT_PERIOD_MS, NULL);
     lv_timer_set_repeat_count(s_timer, -1);
 
-    ESP_LOGI(TAG, "Initialized (5-min sampler, CHAG=GPIO38, BT_M=ADC1_CH2)");
+    ESP_LOGI(TAG, "Initialized (5-min sampler, backend=%s)",
+             s_backend_set ? "external gauge" : "ADC1_CH2/CHAG GPIO38");
+}
+
+void battery_set_backend(const battery_backend_t *backend)
+{
+    if (!backend) {
+        memset(&s_backend, 0, sizeof(s_backend));
+        s_backend_set = false;
+        return;
+    }
+    s_backend = *backend;
+    s_backend_set = s_backend.read_voltage_mv != NULL &&
+                    s_backend.read_charging != NULL;
 }
 
 int  battery_get_percent(void) { return s_last_percent; }

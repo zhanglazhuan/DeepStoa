@@ -32,6 +32,11 @@
 #include "news_app.h"
 #include "player_app.h"
 #include "reader_app.h"
+#include "lxj_clock_app.h"
+#include "lxj_todolist_app.h"
+#include "lxj_picture_app.h"
+#include "lxj_audio_app.h"
+#include "lxj_legacy_apps.h"
 #include "ft6336.h"
 #include "lv_status_bar.h"
 #include "lv_alarm_alert.h"
@@ -138,6 +143,18 @@ void app_main(void)
     news_app_init();
     player_init();
     reader_init();
+    lxj_clock_init();
+    lxj_todolist_init();
+    lxj_picture_init();
+    lxj_audio_init();
+    lxj_alarm_init();
+    lxj_chat_init();
+    lxj_fiction_init();
+    lxj_mistakebook_init();
+    lxj_network_init();
+    lxj_pomodoro_init();
+    lxj_settings_init();
+    lxj_weather_init();
 
     // ---- 6b. Background update check (silent; result shows up in Settings) ----
     settings_model_update_t upd;

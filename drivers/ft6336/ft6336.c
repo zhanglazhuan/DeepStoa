@@ -209,6 +209,11 @@ esp_err_t ft6336_init_shared(void *bus, gpio_num_t rst_pin, uint8_t i2c_addr)
     return ESP_OK;
 }
 
+i2c_master_bus_handle_t ft6336_get_bus(void)
+{
+    return s_i2c_bus;
+}
+
 esp_err_t ft6336_get_chip_id(uint8_t *chip_id)
 {
     return ft6336_read_regs(FT6336_REG_CHIP_ID, chip_id, 1);

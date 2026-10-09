@@ -1,5 +1,5 @@
 idf_component_register(
-    SRCS "time_service.c"
+    SRCS "time_service.c" "time_service_pcf85063.c"
     INCLUDE_DIRS "."
-    REQUIRES lvgl events flash lwip esp_netif
+    REQUIRES lvgl events flash lwip esp_netif pcf85063
 )

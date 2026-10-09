@@ -13,6 +13,7 @@
 #include "esp_err.h"
 #include "hal/gpio_types.h"
 #include "hal/i2c_types.h"
+#include "driver/i2c_master.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -103,6 +104,15 @@ esp_err_t ft6336_read(ft6336_touch_data_t *data);
  * @return esp_err_t
  */
 esp_err_t ft6336_sleep(bool enable);
+
+/**
+ * @brief Return the bus created by ft6336_init().
+ *
+ * The caller may add devices to this bus after the board schematic confirms
+ * that they share the same SDA/SCL wiring. The caller does not own the bus
+ * and must not delete it.
+ */
+i2c_master_bus_handle_t ft6336_get_bus(void);
 
 #ifdef __cplusplus
 }

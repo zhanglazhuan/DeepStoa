@@ -15,6 +15,7 @@ file(GLOB_RECURSE SRC_IMGS_28   "imgs/icon_28x28/*.c")
 file(GLOB_RECURSE SRC_IMGS_40   "imgs/icon_40x40/*.c")
 file(GLOB_RECURSE SRC_LOGO      "imgs/logo_80x80/*.c")
 file(GLOB_RECURSE SRC_COVER     "imgs/cover_800x480/*.c")
+file(GLOB_RECURSE SRC_WEATHER   "imgs/icon_weather/*.c")
 file(GLOB_RECURSE SRC_WIDGETS   "widgets/*.c")
 file(GLOB_RECURSE SRC_THEME     "theme/*.c")
 file(GLOB_RECURSE SRC_UTILS     "utils/*.c")
@@ -31,6 +32,7 @@ idf_component_register(
         ${SRC_IMGS_40}
         ${SRC_LOGO}
         ${SRC_COVER}
+        ${SRC_WEATHER}
     INCLUDE_DIRS
         "."
         "framework"
@@ -42,6 +44,7 @@ idf_component_register(
         "imgs/icon_40x40"
         "imgs/logo_80x80"
         "imgs/cover_800x480"
+        "imgs/icon_weather"
     REQUIRES
         lvgl
         timeservice

@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="520" viewBox="0 0 960 520">
+  <style>
+    .card { fill: #fff; stroke: #111; stroke-width: 2; }
+    .icon { fill: none; stroke: #111; stroke-width: 8; stroke-linecap: round; stroke-linejoin: round; }
+    .fill { fill: #111; stroke: none; }
+    .label { font: 18px sans-serif; fill: #111; text-anchor: middle; }
+    .macro { font: 13px monospace; fill: #333; text-anchor: middle; }
+  </style>
+
+  <g transform="translate(20 20)">
+    <rect class="card" width="210" height="220" rx="8"/>
+    <g transform="translate(45 45)">
+      <circle class="icon" cx="42" cy="46" r="30"/>
+      <circle class="icon" cx="118" cy="46" r="30"/>
+      <path class="icon" d="M72 46 C83 36 94 36 88 46"/>
+      <path class="icon" d="M12 42 L0 36"/>
+      <path class="icon" d="M148 42 L160 36"/>
+    </g>
+    <text class="label" x="105" y="155">Glasses</text>
+    <text class="macro" x="105" y="182">FONT_AWESOME_GLASSES</text>
+  </g>
+
+  <g transform="translate(250 20)">
+    <rect class="card" width="210" height="220" rx="8"/>
+    <g transform="translate(58 45)">
+      <circle class="icon" cx="48" cy="48" r="38"/>
+      <path class="icon" d="M76 76 L122 122"/>
+    </g>
+    <text class="label" x="105" y="155">Magnifier</text>
+    <text class="macro" x="105" y="182">MAGNIFYING_GLASS</text>
+  </g>
+
+  <g transform="translate(480 20)">
+    <rect class="card" width="210" height="220" rx="8"/>
+    <g transform="translate(50 42)">
+      <path class="icon" d="M22 16 H96 V106 H22 Z"/>
+      <path class="icon" d="M42 38 H78"/>
+      <path class="icon" d="M42 60 H74"/>
+      <path class="icon" d="M42 82 H65"/>
+      <path class="icon" d="M82 90 L130 42"/>
+      <path class="icon" d="M118 30 L142 54"/>
+    </g>
+    <text class="label" x="105" y="155">Pen Note</text>
+    <text class="macro" x="105" y="182">PEN_TO_SQUARE</text>
+  </g>
+
+  <g transform="translate(710 20)">
+    <rect class="card" width="210" height="220" rx="8"/>
+    <g transform="translate(46 48)">
+      <path class="icon" d="M18 20 H128 V82 H58 L28 112 V82 H18 Z"/>
+      <path class="icon" d="M72 66 V62 C72 52 92 50 92 36 C92 24 82 18 70 18 C60 18 52 22 46 30"/>
+      <circle class="fill" cx="72" cy="88" r="5"/>
+    </g>
+    <text class="label" x="105" y="155">Question Chat</text>
+    <text class="macro" x="105" y="182">COMMENT_QUESTION</text>
+  </g>
+
+  <g transform="translate(20 270)">
+    <rect class="card" width="210" height="220" rx="8"/>
+    <g transform="translate(55 42)">
+      <circle class="icon" cx="58" cy="58" r="50"/>
+      <path class="icon" d="M58 52 V88"/>
+      <circle class="fill" cx="58" cy="30" r="5"/>
+    </g>
+    <text class="label" x="105" y="155">Info</text>
+    <text class="macro" x="105" y="182">CIRCLE_INFO</text>
+  </g>
+
+  <g transform="translate(250 270)">
+    <rect class="card" width="210" height="220" rx="8"/>
+    <g transform="translate(50 42)">
+      <path class="icon" d="M60 10 L76 44 L112 48 L86 74 L92 110 L60 92 L28 110 L34 74 L8 48 L44 44 Z"/>
+    </g>
+    <text class="label" x="105" y="155">Star</text>
+    <text class="macro" x="105" y="182">FONT_AWESOME_STAR</text>
+  </g>
+
+  <g transform="translate(480 270)">
+    <rect class="card" width="210" height="220" rx="8"/>
+    <g transform="translate(48 48)">
+      <path class="icon" d="M64 112 C18 76 8 46 24 26 C40 6 60 18 64 34 C68 18 88 6 104 26 C120 46 110 76 64 112 Z"/>
+    </g>
+    <text class="label" x="105" y="155">Heart</text>
+    <text class="macro" x="105" y="182">FONT_AWESOME_HEART</text>
+  </g>
+
+  <g transform="translate(710 270)">
+    <rect class="card" width="210" height="220" rx="8"/>
+    <g transform="translate(48 45)">
+      <rect class="icon" x="10" y="14" width="112" height="86"/>
+      <circle class="icon" cx="90" cy="40" r="10"/>
+      <path class="icon" d="M18 94 L52 58 L76 82 L92 66 L122 100"/>
+    </g>
+    <text class="label" x="105" y="155">Image</text>
+    <text class="macro" x="105" y="182">FONT_AWESOME_IMAGE</text>
+  </g>
+</svg>

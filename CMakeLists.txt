@@ -2,6 +2,11 @@
 cmake_minimum_required(VERSION 3.16)
 
 set(EXTRA_COMPONENT_DIRS
+    ${CMAKE_SOURCE_DIR}/drivers/qmi8658
+    ${CMAKE_SOURCE_DIR}/drivers/shtc3
+    ${CMAKE_SOURCE_DIR}/drivers/es8311
+    ${CMAKE_SOURCE_DIR}/drivers/axp2101
+    ${CMAKE_SOURCE_DIR}/drivers/pcf85063
     ${CMAKE_SOURCE_DIR}/drivers/ft6336
     ${CMAKE_SOURCE_DIR}/system/controller
     ${CMAKE_SOURCE_DIR}/system/appmgr
@@ -10,6 +15,7 @@ set(EXTRA_COMPONENT_DIRS
     ${CMAKE_SOURCE_DIR}/system/events
     ${CMAKE_SOURCE_DIR}/system/logs
     ${CMAKE_SOURCE_DIR}/system/monitor
+    ${CMAKE_SOURCE_DIR}/system/battery
     ${CMAKE_SOURCE_DIR}/system/wifi
     ${CMAKE_SOURCE_DIR}/system/timeservice
     ${CMAKE_SOURCE_DIR}/system/alarm
@@ -26,16 +32,25 @@ set(EXTRA_COMPONENT_DIRS
     ${CMAKE_SOURCE_DIR}/apps/news
     ${CMAKE_SOURCE_DIR}/apps/reader
     ${CMAKE_SOURCE_DIR}/apps/todolist
+    ${CMAKE_SOURCE_DIR}/apps/lxj_clock
+    ${CMAKE_SOURCE_DIR}/apps/lxj_todolist
+    ${CMAKE_SOURCE_DIR}/apps/lxj_picture
+    ${CMAKE_SOURCE_DIR}/apps/lxj_audio
+    ${CMAKE_SOURCE_DIR}/apps/lxj_fiction
+    ${CMAKE_SOURCE_DIR}/apps/lxj
 )
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(DeepStoa)
 
 # 把 fs_image/ 打成 FAT 镜像烧进 storage 分区（运行时挂载在 /sdcard）。
-# 板子上还没有 SD 卡座，但 ID3 解析、VBR 时长、seek 索引这些都是纯文件解析，
-# 不需要 codec，只需要有真实文件可读 —— 这个分区就是用来解掉那个前提的。
-# FLASH_IN_PROJECT: 让 idf.py flash 顺带把镜像一起烧进去。
-fatfs_create_spiflash_image(storage fs_image FLASH_IN_PROJECT)
+# 资源目录是可选的：开发分支可能暂时不携带音频/测试文件，但这不应阻塞
+# 固件本体编译。目录恢复后，重新 configure 即会自动恢复镜像生成和烧录。
+if(EXISTS "${CMAKE_SOURCE_DIR}/fs_image")
+    fatfs_create_spiflash_image(storage fs_image FLASH_IN_PROJECT)
+else()
+    message(WARNING "fs_image/ is absent; storage image generation is disabled")
+endif()
 
 # Workaround GCC ICE (Segfault during IRA pass) in esp_lcd_panel_rgb.c
 # triggered by SPIRAM=y inflating code paths. We don't use RGB LCD at all,
