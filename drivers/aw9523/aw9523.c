@@ -146,9 +146,11 @@ esp_err_t aw9523_init(uint8_t i2c_port, gpio_num_t sda_pin, gpio_num_t scl_pin,
         return ret;
     }
 
-    // LED mode: 0 = GPIO mode (not LED current sink)
-    aw9523_write_reg(AW9523_REG_LEDMODE_P0, 0x00);
-    aw9523_write_reg(AW9523_REG_LEDMODE_P1, 0x00);
+    // LEDMODE bit: 0 = LED/current-sink mode, 1 = GPIO mode.
+    // Use GPIO mode for every pin; the display control lines must be
+    // ordinary push-pull GPIOs rather than LED current sinks.
+    aw9523_write_reg(AW9523_REG_LEDMODE_P0, 0xFF);
+    aw9523_write_reg(AW9523_REG_LEDMODE_P1, 0xFF);
 
     // Match the pre-production board schematic. Preload safe output levels while
     // every pin is still an input, then enable only the intended outputs.

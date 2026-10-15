@@ -19,7 +19,7 @@ static uint8_t get_port_bit(uint8_t port_value, uint8_t pin)
     return (port_value >> AW9523_GET_BIT(pin)) & 0x01U;
 }
 
-void app_main2(void)
+static void run_aw9523_test(void)
 {
     ESP_LOGI(TAG, "=== t_aw9523: AW9523 IO Expander Validation ===");
 
@@ -90,38 +90,7 @@ void app_main2(void)
     }
 }
 
-#include "driver/gpio.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-
 void app_main(void)
 {
-    // SDA/SCL：完全高阻
-    gpio_config_t i2c_io = {
-        .pin_bit_mask =
-            (1ULL << GPIO_NUM_17) |
-            (1ULL << GPIO_NUM_18),
-        .mode = GPIO_MODE_INPUT,
-        .pull_up_en = GPIO_PULLUP_DISABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        .intr_type = GPIO_INTR_DISABLE,
-    };
-    gpio_config(&i2c_io);
-
-    // GPIO13 -> AW9523 RSTN
-    // 强制保持低电平，让 AW9523 一直处于复位状态
-    gpio_config_t reset_io = {
-        .pin_bit_mask = (1ULL << GPIO_NUM_13),
-        .mode = GPIO_MODE_OUTPUT,
-        .pull_up_en = GPIO_PULLUP_DISABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        .intr_type = GPIO_INTR_DISABLE,
-    };
-    gpio_config(&reset_io);
-
-    gpio_set_level(GPIO_NUM_13, 0);
-
-    while (1) {
-        vTaskDelay(pdMS_TO_TICKS(1000));
-    }
+    run_aw9523_test();
 }

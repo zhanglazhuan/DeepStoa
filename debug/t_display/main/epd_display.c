@@ -24,12 +24,21 @@
 #define EPD_AW_PIN_POWER        DEEPV1_AW_PIN_EPD_POWER
 #define EPD_RST_ACTIVE_LEVEL    0       // reset asserted low (Arduino ref)
 #define EPD_BUSY_ACTIVE_LEVEL   1       // busy while high (Arduino ref)
-#define EPD_BUSY_PULLUP         1
+#define EPD_BUSY_PULLUP         1       // MCU pull-up: keeps BUSY defined when the panel is off.
 #define EPD_SPI_HOST            DEEPV1_EPD_SPI_HOST
 #define EPD_BOARD_NAME          "deepstoa_v1"
 
 #ifndef EPD_SPI_CLOCK_HZ
 #define EPD_SPI_CLOCK_HZ    (10 * 1000 * 1000)  // Arduino ref uses 10 MHz
+#endif
+
+// Upper bound on a single BUSY wait. A healthy panel releases BUSY by itself
+// once the waveform finishes; if the AW9523 POWER/RESET lines or the BUSY net
+// are miswired it stays asserted forever, and the unbounded loop below would
+// hang silently with nothing on the wire. Override with
+// -DEPD_BUSY_TIMEOUT_MS=<ms>.
+#ifndef EPD_BUSY_TIMEOUT_MS
+#define EPD_BUSY_TIMEOUT_MS 10000
 #endif
 
 #include "freertos/FreeRTOS.h"
@@ -162,6 +171,12 @@ void epd_gpio_config(void)
     delay_xms(10);
     aw9523_set_pin(EPD_AW_PIN_RST, !EPD_RST_ACTIVE_LEVEL);
 
+    ESP_LOGI(TAG, "EPD control readback: POWER=%u RESET=%u DC=%u BUSY=%d",
+             aw9523_get_pin(EPD_AW_PIN_POWER),
+             aw9523_get_pin(EPD_AW_PIN_RST),
+             aw9523_get_pin(EPD_AW_PIN_DC),
+             gpio_get_level(EPD_PIN_BUSY));
+
     // Configure SPI bus
     spi_bus_config_t bus_cfg = {
         .mosi_io_num = EPD_PIN_MOSI,
@@ -195,8 +210,23 @@ bool epd_is_busy(void)
 
 static void epd_read_busy(void)
 {
+    int waited_ms = 0;
+
     while (epd_is_busy()) {
+        if (waited_ms >= EPD_BUSY_TIMEOUT_MS) {
+            ESP_LOGW(TAG, "BUSY still asserted after %d ms - continuing anyway "
+                          "(check AW9523 POWER/RESET and the BUSY net)",
+                     waited_ms);
+            return;
+        }
         delay_xms(10);
+        waited_ms += 10;
+    }
+
+    // How long the panel held BUSY is useful timing information when probing
+    // the waveform, so log it whenever there was an actual wait.
+    if (waited_ms > 0) {
+        ESP_LOGI(TAG, "BUSY released after %d ms", waited_ms);
     }
 }
 
@@ -204,10 +234,18 @@ static void epd_read_busy(void)
 
 static void epd_reset(void)
 {
+    ESP_LOGI(TAG, "EPD reset: assert RESET=%d, POWER=%u, BUSY=%d",
+             EPD_RST_ACTIVE_LEVEL,
+             aw9523_get_pin(EPD_AW_PIN_POWER),
+             gpio_get_level(EPD_PIN_BUSY));
     aw9523_set_pin(EPD_AW_PIN_RST, EPD_RST_ACTIVE_LEVEL);  // assert reset
     delay_xms(10);
     aw9523_set_pin(EPD_AW_PIN_RST, !EPD_RST_ACTIVE_LEVEL); // release reset
     delay_xms(10);
+    ESP_LOGI(TAG, "EPD reset: released RESET=%u, POWER=%u, BUSY=%d",
+             aw9523_get_pin(EPD_AW_PIN_RST),
+             aw9523_get_pin(EPD_AW_PIN_POWER),
+             gpio_get_level(EPD_PIN_BUSY));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

@@ -49,6 +49,7 @@
 
 /* AW9523 outputs and inputs, named after the schematic nets. */
 #define DEEPV1_AW_PIN_EN_POWER   AW9523_PIN_P0_0
+/* J4 headphone socket sense, INPUT despite the AMP_EN net name. */
 #define DEEPV1_AW_PIN_AMP_EN     AW9523_PIN_P0_1
 #define DEEPV1_AW_PIN_EN_MOTOR   AW9523_PIN_P1_0
 #define DEEPV1_AW_PIN_AP_EN      AW9523_PIN_P1_1
@@ -60,8 +61,8 @@
 #define DEEPV1_AW_PIN_LCD_POWER  AW9523_PIN_P1_7
 
 /* AW9523 direction registers use 1 for input and 0 for output. */
-#define DEEPV1_AW_P0_INPUT_MASK  0xFCU
-#define DEEPV1_AW_P0_OUTPUT_MASK 0x03U
+#define DEEPV1_AW_P0_INPUT_MASK  0xFEU
+#define DEEPV1_AW_P0_OUTPUT_MASK 0x01U
 #define DEEPV1_AW_P1_INPUT_MASK  0x0CU
 #define DEEPV1_AW_P1_OUTPUT_MASK 0xF3U
 
@@ -100,6 +101,12 @@
 #define DEEPV1_PIN_I2S_LRCLK     GPIO_NUM_6
 #define DEEPV1_PIN_I2S_BCLK      GPIO_NUM_7
 #define DEEPV1_PIN_I2S_MCLK      GPIO_NUM_8
+
+/* Net names describe the codec side, not the ESP32 I2S direction.
+ * U12 ES8311 DSDIN pin 9 / TP18 receives playback on GPIO1.
+ * U15 ES7210 SDOUT1 pin 11 / TP25 supplies capture on GPIO5. */
+#define DEEPV1_PIN_I2S_TX        DEEPV1_PIN_I2S_DIN
+#define DEEPV1_PIN_I2S_RX        DEEPV1_PIN_I2S_DOUT1
 
 /* USB 2.0 data lines. */
 #define DEEPV1_PIN_USB_DN        GPIO_NUM_19
