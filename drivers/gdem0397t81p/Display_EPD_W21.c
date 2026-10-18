@@ -1,19 +1,37 @@
-// debug/t_display/main/epd_display.c
+// drivers/gdem0397t81p/Display_EPD_W21.c
 // GDEM0397T81P e-ink display driver (480x800)
 //
 // Display init sequences and command logic preserved VERBATIM from
 // drivers/gdem0397t81p/Display_EPD_W21.c (originally from Zephyr RTOS port).
 //
-// Low-level transport: ESP-IDF hardware SPI (mode 0, MSB first) + direct GPIO.
-// Pin definitions from: boards/esp32s3/esp32s3_devkit.h
-//
-// Wiring (matches Arduino reference):
-//   GPIO 11=SPI MOSI, GPIO 12=SPI SCK,
-//   GPIO 15=CS, GPIO 6=DC, GPIO 7=RST, GPIO 8=BUSY
+// Low-level transport: ESP-IDF hardware SPI (mode 0, MSB first).
+// DeepStoa v1 routes MOSI/SCK/CS/BUSY directly to the ESP32-S3, while
+// DC/RESET/POWER are driven by the AW9523 I/O expander.
+// SPI clock can be overridden with -DEPD_SPI_CLOCK_HZ=<hz> (default 10 MHz).
 
 #include <string.h>
+#include <stdio.h>
 #include "Display_EPD_W21.h"
-#include "esp32s3_devkit.h"
+
+#include "deepstoa_v1.h"
+#include "aw9523.h"
+
+#define EPD_PIN_MOSI            DEEPV1_PIN_EPD_MOSI
+#define EPD_PIN_SCK             DEEPV1_PIN_EPD_SCK
+#define EPD_PIN_CS              DEEPV1_PIN_EPD_CS
+#define EPD_PIN_BUSY            DEEPV1_PIN_EPD_BUSY
+#define EPD_AW_PIN_DC           DEEPV1_AW_PIN_EPD_DC
+#define EPD_AW_PIN_RST          DEEPV1_AW_PIN_EPD_RESET
+#define EPD_AW_PIN_POWER        DEEPV1_AW_PIN_EPD_POWER
+#define EPD_RST_ACTIVE_LEVEL    0       // reset asserted low (Arduino ref)
+#define EPD_BUSY_ACTIVE_LEVEL   1       // busy while high (Arduino ref)
+#define EPD_BUSY_PULLUP         1       // MCU pull-up: keeps BUSY defined when the panel is off.
+#define EPD_SPI_HOST            DEEPV1_EPD_SPI_HOST
+#define EPD_BOARD_NAME          "deepstoa_v1"
+
+#ifndef EPD_SPI_CLOCK_HZ
+#define EPD_SPI_CLOCK_HZ    (10 * 1000 * 1000)  // Arduino ref uses 10 MHz
+#endif
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -48,6 +66,7 @@ static const char *TAG = "epd_hwspi";
 
 /* 每笔 SPI 传输的分块大小，与 bus_cfg.max_transfer_sz 一致。 */
 #define EPD_TX_CHUNK  4096
+#define EPD_BUSY_TIMEOUT_MS 10000
 
 /* 常驻的 DMA 反弹缓冲。
  *
@@ -63,6 +82,7 @@ static const char *TAG = "epd_hwspi";
 static uint8_t *s_tx_bounce;
 
 static spi_device_handle_t spi_dev;
+static int s_dc_level = -1;
 
 // ─── GPIO / Delay helpers ──────────────────────────────────────────────
 
@@ -80,7 +100,10 @@ static void spi_write_byte(uint8_t data)
         .tx_data = {data},              // USE_TXDATA reads from inline tx_data[4], NOT tx_buffer
         .flags = SPI_TRANS_USE_TXDATA,
     };
-    spi_device_transmit(spi_dev, &t);
+    esp_err_t err = spi_device_transmit(spi_dev, &t);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "SPI byte 0x%02x failed: %s", data, esp_err_to_name(err));
+    }
 }
 
 static void spi_write_bytes(const uint8_t *data, uint32_t len)
@@ -143,43 +166,74 @@ static void spi_write_bytes(const uint8_t *data, uint32_t len)
     }
 }
 
+static void epd_set_dc(int level)
+{
+    if (s_dc_level != level) {
+        aw9523_set_pin(EPD_AW_PIN_DC, level);
+        s_dc_level = level;
+    }
+}
+
 // ─── SPI command / data write ──────────────────────────────────────────
 
 static void epd_write_cmd(uint8_t cmd)
 {
-    gpio_set_level(DEVKIT_PIN_EPD_DC, 0);   // DC=0: command
-    gpio_set_level(DEVKIT_PIN_EPD_CS, 0);   // CS=0: assert
+    epd_set_dc(0);   // DC=0: command
+    gpio_set_level(EPD_PIN_CS, 0);   // CS=0: assert
     spi_write_byte(cmd);
-    gpio_set_level(DEVKIT_PIN_EPD_CS, 1);   // CS=1: de-assert
+    gpio_set_level(EPD_PIN_CS, 1);   // CS=1: de-assert
 }
 
 static void epd_write_data(uint8_t data)
 {
-    gpio_set_level(DEVKIT_PIN_EPD_DC, 1);   // DC=1: data
-    gpio_set_level(DEVKIT_PIN_EPD_CS, 0);   // CS=0: assert
+    epd_set_dc(1);   // DC=1: data
+    gpio_set_level(EPD_PIN_CS, 0);   // CS=0: assert
     spi_write_byte(data);
-    gpio_set_level(DEVKIT_PIN_EPD_CS, 1);   // CS=1: de-assert
+    gpio_set_level(EPD_PIN_CS, 1);   // CS=1: de-assert
 }
 
 static void epd_write_data_pkg(const uint8_t *data, uint32_t len)
 {
-    gpio_set_level(DEVKIT_PIN_EPD_DC, 1);   // DC=1: data
-    gpio_set_level(DEVKIT_PIN_EPD_CS, 0);   // CS=0: assert
+    epd_set_dc(1);   // DC=1: data
+    gpio_set_level(EPD_PIN_CS, 0);   // CS=0: assert
     spi_write_bytes(data, len);
-    gpio_set_level(DEVKIT_PIN_EPD_CS, 1);   // CS=1: de-assert
+    gpio_set_level(EPD_PIN_CS, 1);   // CS=1: de-assert
+}
+
+static void epd_write_data_fill(uint8_t value, uint32_t len)
+{
+    uint8_t fallback[128] __attribute__((aligned(4)));
+    uint8_t *buffer = s_tx_bounce ? s_tx_bounce : fallback;
+    uint32_t capacity = s_tx_bounce ? EPD_TX_CHUNK : sizeof(fallback);
+    memset(buffer, value, capacity);
+
+    epd_set_dc(1);
+    gpio_set_level(EPD_PIN_CS, 0);
+    while (len) {
+        uint32_t chunk = len > capacity ? capacity : len;
+        spi_write_bytes(buffer, chunk);
+        len -= chunk;
+    }
+    gpio_set_level(EPD_PIN_CS, 1);
 }
 
 // ─── GPIO Configuration ────────────────────────────────────────────────
 
 void epd_gpio_config(void)
 {
-    ESP_LOGI(TAG, "Configuring GPIO and SPI for GDEM0397T81P");
+    ESP_LOGI(TAG, "Configuring GDEM0397T81P (board=%s, MOSI=%d SCK=%d CS=%d BUSY=%d, %d Hz)",
+             EPD_BOARD_NAME, EPD_PIN_MOSI, EPD_PIN_SCK, EPD_PIN_CS,
+             EPD_PIN_BUSY, EPD_SPI_CLOCK_HZ);
 
-    // Configure control pins as outputs
+    if (!aw9523_get_i2c_bus()) ESP_ERROR_CHECK(aw9523_init(DEEPV1_I2C_PORT,
+                                DEEPV1_PIN_I2C_SDA,
+                                DEEPV1_PIN_I2C_SCL,
+                                DEEPV1_PIN_IO_RESET,
+                                DEEPV1_AW9523_ADDR));
+
+    // CS is the only display control output connected directly to the MCU.
     gpio_config_t io_conf = {
-        .pin_bit_mask = (1ULL << DEVKIT_PIN_EPD_CS) |
-                        (1ULL << DEVKIT_PIN_EPD_DC) |
-                        (1ULL << DEVKIT_PIN_EPD_RST),
+        .pin_bit_mask = (1ULL << EPD_PIN_CS),
         .mode = GPIO_MODE_OUTPUT,
         .pull_up_en = GPIO_PULLUP_DISABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
@@ -187,41 +241,51 @@ void epd_gpio_config(void)
     };
     gpio_config(&io_conf);
 
-    // Configure BUSY pin as input
+    // Configure BUSY pin as input (pull-up per board definition)
     gpio_config_t busy_conf = {
-        .pin_bit_mask = (1ULL << DEVKIT_PIN_EPD_BUSY),
+        .pin_bit_mask = (1ULL << EPD_PIN_BUSY),
         .mode = GPIO_MODE_INPUT,
-        .pull_up_en = GPIO_PULLUP_ENABLE,
+        .pull_up_en = EPD_BUSY_PULLUP ? GPIO_PULLUP_ENABLE : GPIO_PULLUP_DISABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
         .intr_type = GPIO_INTR_DISABLE,
     };
     gpio_config(&busy_conf);
 
     // Initial pin states
-    gpio_set_level(DEVKIT_PIN_EPD_CS, 1);   // CS inactive
-    gpio_set_level(DEVKIT_PIN_EPD_DC, 0);
-    gpio_set_level(DEVKIT_PIN_EPD_RST, 1);
+    gpio_set_level(EPD_PIN_CS, 1);               // CS inactive
+    aw9523_set_pin(EPD_AW_PIN_DC, 0);            // command mode
+    s_dc_level = 0;
+    aw9523_set_pin(EPD_AW_PIN_RST, EPD_RST_ACTIVE_LEVEL);
+    aw9523_set_pin(EPD_AW_PIN_POWER, 1);         // panel power on
+    delay_xms(10);
+    aw9523_set_pin(EPD_AW_PIN_RST, !EPD_RST_ACTIVE_LEVEL);
+
+    ESP_LOGI(TAG, "EPD control readback: POWER=%u RESET=%u DC=%u BUSY=%d",
+             aw9523_get_pin(EPD_AW_PIN_POWER),
+             aw9523_get_pin(EPD_AW_PIN_RST),
+             aw9523_get_pin(EPD_AW_PIN_DC),
+             gpio_get_level(EPD_PIN_BUSY));
 
     // Configure SPI bus
     spi_bus_config_t bus_cfg = {
-        .mosi_io_num = DEVKIT_PIN_EPD_MOSI,
+        .mosi_io_num = EPD_PIN_MOSI,
         .miso_io_num = -1,         // no MISO needed
-        .sclk_io_num = DEVKIT_PIN_EPD_SCK,
+        .sclk_io_num = EPD_PIN_SCK,
         .quadwp_io_num = -1,
         .quadhd_io_num = -1,
         .max_transfer_sz = 4096,
     };
-    ESP_ERROR_CHECK(spi_bus_initialize(DEVKIT_EPD_SPI_HOST, &bus_cfg, SPI_DMA_CH_AUTO));
+    ESP_ERROR_CHECK(spi_bus_initialize(EPD_SPI_HOST, &bus_cfg, SPI_DMA_CH_AUTO));
 
     // Attach device
     spi_device_interface_config_t dev_cfg = {
         .mode = 0,                           // CPOL=0, CPHA=0
-        .clock_speed_hz = 10 * 1000 * 1000,  // 10 MHz (Arduino ref uses 10 MHz)
+        .clock_speed_hz = EPD_SPI_CLOCK_HZ,
         .spics_io_num = -1,                  // manual CS control
         .queue_size = 1,
         .flags = SPI_DEVICE_NO_DUMMY,
     };
-    ESP_ERROR_CHECK(spi_bus_add_device(DEVKIT_EPD_SPI_HOST, &dev_cfg, &spi_dev));
+    ESP_ERROR_CHECK(spi_bus_add_device(EPD_SPI_HOST, &dev_cfg, &spi_dev));
 
     /* 开机就把 DMA 反弹缓冲占住 —— 此刻内部 RAM 最宽裕。晚一步等到刷屏时
      * 再要，就要和正在渲染的 LVGL 抢，抢不到整帧就发不出去。 */
@@ -241,26 +305,63 @@ void epd_gpio_config(void)
 
 bool epd_is_busy(void)
 {
-    return (gpio_get_level(DEVKIT_PIN_EPD_BUSY) == 1);
+    return (gpio_get_level(EPD_PIN_BUSY) == 1);
+}
+
+bool epd_wait_ready(void)
+{
+    int waited_ms = 0;
+    static bool dumped_gpio;
+
+    while (epd_is_busy()) {
+        if (waited_ms >= EPD_BUSY_TIMEOUT_MS) {
+            if (!dumped_gpio) {
+                dumped_gpio = true;
+                ESP_LOGE(TAG, "BUSY timeout: POWER=%u RESET=%u DC=%u BUSY=%d",
+                         aw9523_get_pin(EPD_AW_PIN_POWER),
+                         aw9523_get_pin(EPD_AW_PIN_RST),
+                         aw9523_get_pin(EPD_AW_PIN_DC), gpio_get_level(EPD_PIN_BUSY));
+                gpio_dump_io_configuration(stdout, (1ULL << EPD_PIN_MOSI) |
+                    (1ULL << EPD_PIN_SCK) | (1ULL << EPD_PIN_CS) | (1ULL << EPD_PIN_BUSY));
+            }
+            ESP_LOGW(TAG, "BUSY still asserted after %d ms - continuing anyway "
+                          "(check AW9523 POWER/RESET and the BUSY net)",
+                     waited_ms);
+            return false;
+        }
+        delay_xms(10);
+        waited_ms += 10;
+    }
+
+    // How long the panel held BUSY is useful timing information when probing
+    // the waveform, so log it whenever there was an actual wait.
+    if (waited_ms > 0) {
+        ESP_LOGI(TAG, "BUSY released after %d ms", waited_ms);
+    }
+    return true;
 }
 
 static void epd_read_busy(void)
 {
-    while (1) {
-        if (gpio_get_level(DEVKIT_PIN_EPD_BUSY) == 0)
-            break;
-        delay_xms(10);
-    }
+    (void)epd_wait_ready();
 }
 
 // ─── Hardware Reset ────────────────────────────────────────────────────
 
 static void epd_reset(void)
 {
-    gpio_set_level(DEVKIT_PIN_EPD_RST, 0);
+    ESP_LOGI(TAG, "EPD reset: assert RESET=%d, POWER=%u, BUSY=%d",
+             EPD_RST_ACTIVE_LEVEL,
+             aw9523_get_pin(EPD_AW_PIN_POWER),
+             gpio_get_level(EPD_PIN_BUSY));
+    aw9523_set_pin(EPD_AW_PIN_RST, EPD_RST_ACTIVE_LEVEL);  // assert reset
     delay_xms(10);
-    gpio_set_level(DEVKIT_PIN_EPD_RST, 1);
+    aw9523_set_pin(EPD_AW_PIN_RST, !EPD_RST_ACTIVE_LEVEL); // release reset
     delay_xms(10);
+    ESP_LOGI(TAG, "EPD reset: released RESET=%u, POWER=%u, BUSY=%d",
+             aw9523_get_pin(EPD_AW_PIN_RST),
+             aw9523_get_pin(EPD_AW_PIN_POWER),
+             gpio_get_level(EPD_PIN_BUSY));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -531,31 +632,31 @@ void EPD_WhiteScreen_ALL(const unsigned char *datas)
 // Fast update display
 void EPD_WhiteScreen_ALL_Fast(const unsigned char *datas)
 {
-    unsigned int i;
+    // 0x26 (the "old" plane) is a constant 0xff. Send it from one reusable
+    // block instead of allocating a second EPD_ARRAY-sized buffer.
+    static uint8_t white_chunk[4096];
+    memset(white_chunk, 0xff, sizeof(white_chunk));
+
     epd_write_cmd(0x24);
-    for (i = 0; i < EPD_ARRAY; i++) {
-        epd_write_data(datas[i]);
-    }
+    epd_write_data_pkg(datas, EPD_ARRAY);
 
     epd_write_cmd(0x26);
-    for (i = 0; i < EPD_ARRAY; i++) {
-        epd_write_data(0xff);
+    for (uint32_t sent = 0; sent < EPD_ARRAY; sent += sizeof(white_chunk)) {
+        uint32_t remaining = EPD_ARRAY - sent;
+        epd_write_data_pkg(white_chunk,
+                           remaining > sizeof(white_chunk) ? sizeof(white_chunk) : remaining);
     }
+
     EPD_Update_Fast();
 }
 
 // Clear screen to white
 void EPD_WhiteScreen_White(void)
 {
-    unsigned int i;
     epd_write_cmd(0x24);
-    for (i = 0; i < EPD_ARRAY; i++) {
-        epd_write_data(0xff);
-    }
+    epd_write_data_fill(0xff, EPD_ARRAY);
     epd_write_cmd(0x26);
-    for (i = 0; i < EPD_ARRAY; i++) {
-        epd_write_data(0xff);
-    }
+    epd_write_data_fill(0xff, EPD_ARRAY);
     EPD_Update();
 }
 
@@ -864,26 +965,46 @@ void EPD_Dis_Part_Window_Async(unsigned int x_start, unsigned int y_start,
                                const unsigned char *frame_buffer,
                                unsigned int stride_bytes)
 {
+    if (!frame_buffer || x_start > x_end || y_start > y_end ||
+        x_end >= EPD_HEIGHT || y_end >= EPD_WIDTH) return;
+
     unsigned int xs = x_start & ~0x07;
     unsigned int xe = x_end | 0x07;
     unsigned int bytes = (xe - xs + 1) / 8;
-    uint8_t line[128] __attribute__((aligned(4)));
+    if (stride_bytes < (xe + 1) / 8) return;
 
+    uint8_t fallback[128] __attribute__((aligned(4)));
+    uint8_t *buffer = s_tx_bounce ? s_tx_bounce : fallback;
+    unsigned int capacity = s_tx_bounce ? EPD_TX_CHUNK : sizeof(fallback);
+    unsigned int used = 0;
+
+    epd_write_cmd(0x44);
+    epd_write_data(xs % 256); epd_write_data(xs / 256);
+    epd_write_data(xe % 256); epd_write_data(xe / 256);
+    epd_write_cmd(0x45);
+    epd_write_data(y_start % 256); epd_write_data(y_start / 256);
+    epd_write_data(y_end % 256); epd_write_data(y_end / 256);
+    epd_write_cmd(0x4E);
+    epd_write_data(xs % 256); epd_write_data(xs / 256);
+    epd_write_cmd(0x4F);
+    epd_write_data(y_start % 256); epd_write_data(y_start / 256);
+    epd_write_cmd(0x24);
+
+    /* Entry mode 0x03 advances through this RAM window automatically. Pack
+     * strided framebuffer data into the existing DMA buffer and keep CS low
+     * across all chunks, so neither DC nor the RAM address is reset per line. */
+    epd_set_dc(1);
+    gpio_set_level(EPD_PIN_CS, 0);
     for (unsigned int y = y_start; y <= y_end; y++) {
-        epd_write_cmd(0x44);
-        epd_write_data(xs % 256); epd_write_data(xs / 256);
-        epd_write_data(xe % 256); epd_write_data(xe / 256);
-        epd_write_cmd(0x45);
-        epd_write_data(y % 256); epd_write_data(y / 256);
-        epd_write_data(y % 256); epd_write_data(y / 256);
-        epd_write_cmd(0x4E);
-        epd_write_data(xs % 256); epd_write_data(xs / 256);
-        epd_write_cmd(0x4F);
-        epd_write_data(y % 256); epd_write_data(y / 256);
-        epd_write_cmd(0x24);
+        if (used + bytes > capacity) {
+            spi_write_bytes(buffer, used);
+            used = 0;
+        }
         unsigned int off = y * stride_bytes + (xs / 8);
-        memcpy(line, &frame_buffer[off], bytes);
-        epd_write_data_pkg(line, bytes);
+        memcpy(buffer + used, &frame_buffer[off], bytes);
+        used += bytes;
     }
+    if (used) spi_write_bytes(buffer, used);
+    gpio_set_level(EPD_PIN_CS, 1);
     EPD_Part_Update_Async();
 }

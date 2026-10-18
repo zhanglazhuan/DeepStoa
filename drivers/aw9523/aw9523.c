@@ -10,6 +10,7 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/semphr.h"
 
 static const char *TAG = "aw9523";
 
@@ -30,6 +31,7 @@ static const char *TAG = "aw9523";
 
 static i2c_master_bus_handle_t g_i2c_bus = NULL;
 static i2c_master_dev_handle_t g_i2c_dev = NULL;
+static SemaphoreHandle_t g_output_lock;
 static uint8_t g_out_cache[2];  // P0, P1 output register cache
 static uint8_t g_dir_cache[2];  // P0, P1 direction register cache
 
@@ -57,6 +59,10 @@ static esp_err_t aw9523_update_reg(uint8_t reg, uint8_t mask, uint8_t value)
 esp_err_t aw9523_init(uint8_t i2c_port, gpio_num_t sda_pin, gpio_num_t scl_pin,
                       gpio_num_t rst_pin, uint8_t i2c_addr)
 {
+    if (g_i2c_bus) return ESP_ERR_INVALID_STATE;
+    if (!g_output_lock) g_output_lock = xSemaphoreCreateMutex();
+    if (!g_output_lock) return ESP_ERR_NO_MEM;
+
     // --- I2C master bus init ---
     i2c_master_bus_config_t bus_cfg = {
         .i2c_port = (i2c_port_t)i2c_port,
@@ -195,8 +201,11 @@ void aw9523_set_port_dir(uint8_t port, uint8_t dir)
 void aw9523_write_port(uint8_t port, uint8_t value)
 {
     if (port > 1) return;
-    g_out_cache[port] = value;
-    aw9523_write_reg(AW9523_REG_OUTPUT_P0 + port, value);
+    if (!g_output_lock) return;
+    xSemaphoreTake(g_output_lock, portMAX_DELAY);
+    if (aw9523_write_reg(AW9523_REG_OUTPUT_P0 + port, value) == ESP_OK)
+        g_out_cache[port] = value;
+    xSemaphoreGive(g_output_lock);
 }
 
 uint8_t aw9523_read_port(uint8_t port)
@@ -213,12 +222,16 @@ void aw9523_set_pin(uint8_t pin, uint8_t level)
     uint8_t bit = AW9523_GET_BIT(pin);
     if (port > 1 || bit > 7) return;
 
-    if (level) {
-        g_out_cache[port] |= (1 << bit);
-    } else {
-        g_out_cache[port] &= ~(1 << bit);
-    }
-    aw9523_write_reg(AW9523_REG_OUTPUT_P0 + port, g_out_cache[port]);
+    if (!g_output_lock) return;
+    // DC/reset and amplifier share P1: serialize the cache AND bus write.
+    xSemaphoreTake(g_output_lock, portMAX_DELAY);
+    uint8_t value = g_out_cache[port];
+    if (level) value |= (1U << bit);
+    else value &= ~(1U << bit);
+    esp_err_t err = aw9523_write_reg(AW9523_REG_OUTPUT_P0 + port, value);
+    if (err == ESP_OK) g_out_cache[port] = value;
+    else ESP_LOGE(TAG, "P%u.%u write failed: %s", port, bit, esp_err_to_name(err));
+    xSemaphoreGive(g_output_lock);
 }
 
 uint8_t aw9523_get_pin(uint8_t pin)

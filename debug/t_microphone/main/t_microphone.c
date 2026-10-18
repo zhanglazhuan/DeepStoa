@@ -26,6 +26,7 @@
 #define RECORD_SAMPLES (RATE * RECORD_SECONDS)
 #define CAPTURE_STOPPED BIT0
 #define RECORD_READY BIT1
+#define PLAYBACK_STOPPED BIT2
 static const char *TAG = "t_microphone";
 static esp_codec_dev_handle_t input, output;
 static const esp_afe_sr_iface_t *afe;
@@ -104,7 +105,6 @@ static void audio_init(void)
     ESP_ERROR_CHECK(esp_codec_dev_open(output, &format));
     ESP_ERROR_CHECK(esp_codec_dev_set_out_vol(output, 55));
     ESP_ERROR_CHECK(esp_codec_dev_set_out_mute(output, false));
-    // Keep the speaker amplifier off throughout recording.
     ESP_LOGI(TAG, "16kHz: TX=GPIO%d RX=GPIO%d; MIC1/MIC2 gain=24dB REF MIC3=0dB",
         DEEPV1_PIN_I2S_TX, DEEPV1_PIN_I2S_RX);
 }
@@ -160,6 +160,26 @@ static void capture_task(void *arg)
     vTaskDelete(NULL);
 }
 
+// Broadband far-end stimulus gives the AEC an identifiable signal to cancel.
+// The board routes ES8311's analog output back to ES7210 MIC3 (the R channel).
+static void playback_task(void *arg)
+{
+    int16_t pcm[320];
+    uint32_t noise = 0x5a17u;
+    while (!atomic_load(&stop_capture)) {
+        for (size_t i = 0; i < 320; ++i) {
+            noise = (noise >> 1) ^ (-(noise & 1u) & 0xd0000001u);
+            pcm[i] = (int16_t)((int32_t)(noise & 0x0fffu) - 2048);
+        }
+        ESP_ERROR_CHECK(esp_codec_dev_write(output, pcm, sizeof(pcm)));
+    }
+    int16_t silence[320] = {0};
+    for (int i = 0; i < 20; ++i) ESP_ERROR_CHECK(esp_codec_dev_write(output, silence, sizeof(silence)));
+    aw9523_set_pin(DEEPV1_AW_PIN_AP_EN, 0);
+    xEventGroupSetBits(events, PLAYBACK_STOPPED);
+    vTaskDelete(NULL);
+}
+
 static void fetch_task(void *arg)
 {
     meter_t meter = {0};
@@ -188,7 +208,6 @@ static void fetch_task(void *arg)
         }
         for (int i = 0; i < r->data_size / sizeof(int16_t); ++i) meter_add(&meter, r->data[i]);
         if (meter.count >= RATE) meter_log("AEC_OUT", &meter);
-        // Do NOT route microphone audio to the speaker: that creates feedback.
         // Drain remaining AFE output until the producer has stopped. This avoids
         // leaving the producer blocked in feed() when the recording is full.
         if (atomic_load(&stop_capture) &&
@@ -229,27 +248,31 @@ void app_main(void)
     assert(events);
     ESP_LOGI(TAG, "feed=%d fetch=%d; AEC_OUT is diagnostic level, not an ERLE measurement",
         afe->get_feed_chunksize(afe_data), afe->get_fetch_chunksize(afe_data));
-    ESP_LOGI(TAG, "Get ready: recording starts in 3 seconds. Speak into the microphones.");
+    ESP_LOGI(TAG, "Get ready: simultaneous playback and capture start in 3 seconds. Speak into the microphones.");
     vTaskDelay(pdMS_TO_TICKS(3000));
-    ESP_LOGI(TAG, "RECORD START: %d seconds, speaker amplifier OFF", RECORD_SECONDS);
+    ESP_LOGI(TAG, "DUPLEX START: %d seconds; broadband playback on, speak into the microphones", RECORD_SECONDS);
+    aw9523_set_pin(DEEPV1_AW_PIN_AP_EN, 1);
+    vTaskDelay(pdMS_TO_TICKS(100));
     assert(xTaskCreate(fetch_task, "aec_fetch", 6144, NULL, 5, NULL) == pdPASS);
     assert(xTaskCreate(capture_task, "mic_feed", 6144, NULL, 5, NULL) == pdPASS);
-    EventBits_t done = xEventGroupWaitBits(events, RECORD_READY | CAPTURE_STOPPED,
+    assert(xTaskCreate(playback_task, "far_end_play", 4096, NULL, 5, NULL) == pdPASS);
+    EventBits_t done = xEventGroupWaitBits(events, RECORD_READY | CAPTURE_STOPPED | PLAYBACK_STOPPED,
         pdFALSE, pdTRUE, pdMS_TO_TICKS(35000));
-    if ((done & (RECORD_READY | CAPTURE_STOPPED)) != (RECORD_READY | CAPTURE_STOPPED)) {
-        ESP_LOGE(TAG, "Recording timed out; playback cancelled. Reset and check capture/AEC logs.");
+    if ((done & (RECORD_READY | CAPTURE_STOPPED | PLAYBACK_STOPPED)) !=
+        (RECORD_READY | CAPTURE_STOPPED | PLAYBACK_STOPPED)) {
+        ESP_LOGE(TAG, "Duplex test timed out; reset and check capture/AEC/playback logs.");
         atomic_store(&stop_capture, true);
+        aw9523_set_pin(DEEPV1_AW_PIN_AP_EN, 0);
         return;
     }
     ESP_ERROR_CHECK(esp_codec_dev_close(input));
-    ESP_LOGI(TAG, "RECORD DONE: %d samples. PLAY START: same 20-second recording", RECORD_SAMPLES);
+    ESP_LOGI(TAG, "DUPLEX DONE: captured %d samples of AEC output during far-end playback", RECORD_SAMPLES);
+    ESP_LOGI(TAG, "PLAY CLEANED CAPTURE: AEC output from the duplex interval");
     aw9523_set_pin(DEEPV1_AW_PIN_AP_EN, 1);
     vTaskDelay(pdMS_TO_TICKS(100));
     for (size_t offset = 0; offset < RECORD_SAMPLES; offset += 320) {
         ESP_ERROR_CHECK(esp_codec_dev_write(output, recording + offset, 320 * sizeof(int16_t)));
-        if (offset % RATE == 0) ESP_LOGI(TAG, "Playing %u/%d seconds", (unsigned)(offset / RATE), RECORD_SECONDS);
     }
-    // Flush the DMA tail before disabling the amplifier.
     int16_t silence[320] = {0};
     for (int i = 0; i < 20; ++i) ESP_ERROR_CHECK(esp_codec_dev_write(output, silence, sizeof(silence)));
     aw9523_set_pin(DEEPV1_AW_PIN_AP_EN, 0);

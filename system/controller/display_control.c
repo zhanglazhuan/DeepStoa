@@ -21,24 +21,6 @@
 
 static const char *TAG = "display_ctrl";
 
-lv_display_t *disp = NULL;
-
-epd_context_t epd_ctx = {
-    .epd_buffer = NULL,
-    .epd_buffer_4g = NULL,
-    .orientation = EPD_ORIENT_PORTRAIT,
-    .flush_mode = EPD_FLUSH_MODE_PARTIAL_ALL,
-    .is_first_flush_in_cycle = true,
-    .state = DISPLAY_STATE_SLEEPING,
-    .is_fast_lut_loaded = false,
-    .need_hw_sync_after_wakeup = true,
-    .need_sync_base = true,
-    .next_frame_flush_mode = false,
-    .requested_flush_mode = EPD_FLUSH_MODE_PARTIAL_ALL,
-    .transition_frame_ready = false,
-    .is_4g_lut_loaded = false,
-};
-
 /* 外部 RAM 做 DMA 时的对齐要求（cache line）。SPI 主机要求地址和长度
  * 都满足，否则会退回内部反弹缓冲，见 epd_alloc_frame()。 */
 #define EPD_DMA_ALIGN  64
@@ -72,13 +54,35 @@ epd_context_t epd_ctx = {
 
 // ── FreeRTOS primitives (replacing Zephyr work queues) ─────────────────
 
-static TimerHandle_t s_lvgl_tick_timer = NULL;
-static TaskHandle_t s_flush_task = NULL;
-static SemaphoreHandle_t s_display_mutex = NULL;
-static volatile bool s_flush_pending = false;
-/* Hardware owns these snapshots while LVGL prepares the next frame. */
-static uint8_t *s_hw_buffer = NULL;
-static uint8_t *s_hw_buffer_4g = NULL;
+typedef struct {
+    lv_display_t *display;
+    epd_context_t epd;
+    TimerHandle_t lvgl_tick_timer;
+    TaskHandle_t flush_task;
+    SemaphoreHandle_t mutex;
+    /* Hardware owns these snapshots while LVGL prepares the next frame. */
+    uint8_t *hw_buffer;
+    uint8_t *hw_buffer_4g;
+    uint8_t draw_buffer[DRAW_BUF_SIZE] __attribute__((aligned(4)));
+} display_control_state_t;
+
+static display_control_state_t s_display = {
+    .epd = {
+        .epd_buffer = NULL,
+        .epd_buffer_4g = NULL,
+        .orientation = EPD_ORIENT_PORTRAIT,
+        .flush_mode = EPD_FLUSH_MODE_PARTIAL_ALL,
+        .is_first_flush_in_cycle = true,
+        .state = DISPLAY_STATE_SLEEPING,
+        .is_fast_lut_loaded = false,
+        .need_hw_sync_after_wakeup = true,
+        .need_sync_base = true,
+        .next_frame_flush_mode = false,
+        .requested_flush_mode = EPD_FLUSH_MODE_PARTIAL_ALL,
+        .transition_frame_ready = false,
+        .is_4g_lut_loaded = false,
+    },
+};
 // ── Forward declarations ───────────────────────────────────────────────
 
 static void lvgl_flush_cb(lv_display_t *d, const lv_area_t *area, uint8_t *px_map);
@@ -92,7 +96,7 @@ static bool map_screen_point_to_panel(int32_t screen_x, int32_t screen_y,
     int32_t px = screen_x;
     int32_t py = screen_y;
 
-    switch (epd_ctx.orientation) {
+    switch (s_display.epd.orientation) {
     case EPD_ORIENT_LANDSCAPE:
         px = LCD_H_RES - 1 - screen_y;
         py = screen_x;
@@ -152,42 +156,42 @@ static void flush_task(void *arg)
 {
     while (1) {
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);  // wait for signal
-        if (!disp) continue;
+        if (!s_display.display) continue;
 
-        while (epd_is_busy()) {
-            vTaskDelay(pdMS_TO_TICKS(10));
-        }
+        // Match t_display: a stuck BUSY signal must not prevent the queued
+        // LVGL frame from ever reaching the panel.
+        (void)epd_wait_ready();
 
         /* Take an immutable frame snapshot before touching the panel. */
-        xSemaphoreTake(s_display_mutex, portMAX_DELAY);
-        if (epd_ctx.is_first_flush_in_cycle) {
+        xSemaphoreTake(s_display.mutex, portMAX_DELAY);
+        if (s_display.epd.is_first_flush_in_cycle) {
             /* Notifications raised before the previous snapshot can remain
              * counted while the panel is BUSY.  They no longer represent a
              * dirty frame, so never replay the stale dirty rectangle. */
-            xSemaphoreGive(s_display_mutex);
+            xSemaphoreGive(s_display.mutex);
             continue;
         }
-        lv_area_t area = epd_ctx.dirty_area;
-        epd_flush_mode_t mode = epd_ctx.flush_mode;
-        bool sync_after_wakeup = epd_ctx.need_hw_sync_after_wakeup;
-        bool transition_frame = epd_ctx.transition_frame_ready;
-        epd_flush_mode_t transition_target = epd_ctx.requested_flush_mode;
-        epd_ctx.is_first_flush_in_cycle = true;
-        epd_ctx.need_sync_base = false;
+        lv_area_t area = s_display.epd.dirty_area;
+        epd_flush_mode_t mode = s_display.epd.flush_mode;
+        bool sync_after_wakeup = s_display.epd.need_hw_sync_after_wakeup;
+        bool transition_frame = s_display.epd.transition_frame_ready;
+        epd_flush_mode_t transition_target = s_display.epd.requested_flush_mode;
+        s_display.epd.is_first_flush_in_cycle = true;
+        s_display.epd.need_sync_base = false;
         if (transition_frame) {
             /* This snapshot now owns the armed transition.  Clear the shared
              * state here so a later request cannot be consumed when this
              * (potentially slow) hardware update completes. */
-            epd_ctx.transition_frame_ready = false;
-            epd_ctx.next_frame_flush_mode = false;
-            epd_ctx.flush_mode = transition_target;
+            s_display.epd.transition_frame_ready = false;
+            s_display.epd.next_frame_flush_mode = false;
+            s_display.epd.flush_mode = transition_target;
         }
-        if (s_hw_buffer) memcpy(s_hw_buffer, epd_ctx.epd_buffer, EPD_ARRAY);
-        if (s_hw_buffer_4g) memcpy(s_hw_buffer_4g, epd_ctx.epd_buffer_4g, EPD_ARRAY);
-        xSemaphoreGive(s_display_mutex);
+        if (s_display.hw_buffer) memcpy(s_display.hw_buffer, s_display.epd.epd_buffer, EPD_ARRAY);
+        if (s_display.hw_buffer_4g) memcpy(s_display.hw_buffer_4g, s_display.epd.epd_buffer_4g, EPD_ARRAY);
+        xSemaphoreGive(s_display.mutex);
 
-        const uint8_t *frame = s_hw_buffer ? s_hw_buffer : epd_ctx.epd_buffer;
-        const uint8_t *frame_4g = s_hw_buffer_4g ? s_hw_buffer_4g : epd_ctx.epd_buffer_4g;
+        const uint8_t *frame = s_display.hw_buffer ? s_display.hw_buffer : s_display.epd.epd_buffer;
+        const uint8_t *frame_4g = s_display.hw_buffer_4g ? s_display.hw_buffer_4g : s_display.epd.epd_buffer_4g;
         switch (mode) {
         case EPD_FLUSH_MODE_FULL:
             EPD_Dis_PartAll(frame);
@@ -201,28 +205,26 @@ static void flush_task(void *arg)
         case EPD_FLUSH_MODE_PARTIAL_WIN:
             if (sync_after_wakeup) {
                 EPD_Dis_Part_Window_Activate();
-                xSemaphoreTake(s_display_mutex, portMAX_DELAY);
-                epd_ctx.need_hw_sync_after_wakeup = false;
-                xSemaphoreGive(s_display_mutex);
+                xSemaphoreTake(s_display.mutex, portMAX_DELAY);
+                s_display.epd.need_hw_sync_after_wakeup = false;
+                xSemaphoreGive(s_display.mutex);
             }
             EPD_Dis_Part_Window_Async(area.y1, area.x1,
                                       area.y2, area.x2,
                                       frame, LCD_V_RES / 8);
             break;
         case EPD_FLUSH_MODE_4G:
-            if (!epd_ctx.is_4g_lut_loaded) {
+            if (!s_display.epd.is_4g_lut_loaded) {
                 EPD_HW_Init_4G();
-                epd_ctx.is_4g_lut_loaded = true;
-                epd_ctx.is_fast_lut_loaded = false;
+                s_display.epd.is_4g_lut_loaded = true;
+                s_display.epd.is_fast_lut_loaded = false;
             }
             EPD_Update_4Gray_WithBuffers(frame, frame_4g);
             break;
         }
 
         if (transition_frame) {
-            while (epd_is_busy()) {
-                vTaskDelay(pdMS_TO_TICKS(10));
-            }
+            (void)epd_wait_ready();
             /* The physical panel now matches this immutable snapshot.  Use
              * the same frame as the differential-update base; the live LVGL
              * buffer may already contain later keystrokes. */
@@ -264,26 +266,26 @@ static void lvgl_flush_cb(lv_display_t *d, const lv_area_t *area, uint8_t *px_ma
     bool has_valid = false;
     bool is_last = lv_display_flush_is_last(d);
 
-    xSemaphoreTake(s_display_mutex, portMAX_DELAY);
+    xSemaphoreTake(s_display.mutex, portMAX_DELAY);
 
     /* A next-frame mode request belongs to the complete screen invalidation
      * issued by keyboard/form code.  Do not apply it in the setter: a queued
      * textarea notification may still be waiting behind an EPD BUSY period
      * and would otherwise consume the request before the keyboard is drawn. */
     bool is_full_screen = area->x1 <= 0 && area->y1 <= 0 &&
-                          area->x2 >= (int32_t)epd_ctx.screen_w - 1 &&
-                          area->y2 >= (int32_t)epd_ctx.screen_h - 1;
-    if (epd_ctx.next_frame_flush_mode && is_full_screen) {
+                          area->x2 >= (int32_t)s_display.epd.screen_w - 1 &&
+                          area->y2 >= (int32_t)s_display.epd.screen_h - 1;
+    if (s_display.epd.next_frame_flush_mode && is_full_screen) {
         /* Establish the static keyboard with the much faster whole-frame
          * transport.  The hardware task switches to the requested window
          * mode immediately after taking this immutable snapshot. */
-        epd_ctx.flush_mode =
-            epd_ctx.requested_flush_mode == EPD_FLUSH_MODE_PARTIAL_WIN
+        s_display.epd.flush_mode =
+            s_display.epd.requested_flush_mode == EPD_FLUSH_MODE_PARTIAL_WIN
                 ? EPD_FLUSH_MODE_PARTIAL_ALL
-                : epd_ctx.requested_flush_mode;
-        epd_ctx.need_sync_base =
-            epd_ctx.requested_flush_mode == EPD_FLUSH_MODE_PARTIAL_WIN;
-        epd_ctx.transition_frame_ready = true;
+                : s_display.epd.requested_flush_mode;
+        s_display.epd.need_sync_base =
+            s_display.epd.requested_flush_mode == EPD_FLUSH_MODE_PARTIAL_WIN;
+        s_display.epd.transition_frame_ready = true;
     }
 
     int32_t start_x = 0;
@@ -291,8 +293,8 @@ static void lvgl_flush_cb(lv_display_t *d, const lv_area_t *area, uint8_t *px_ma
     int32_t end_x = w - 1;
     int32_t end_y = h - 1;
     bool limit_to_refresh_area =
-        epd_ctx.flush_mode == EPD_FLUSH_MODE_PARTIAL_WIN &&
-        epd_ctx.has_refresh_area && !epd_ctx.need_sync_base;
+        s_display.epd.flush_mode == EPD_FLUSH_MODE_PARTIAL_WIN &&
+        s_display.epd.has_refresh_area && !s_display.epd.need_sync_base;
 
     if (limit_to_refresh_area) {
         epd_refresh_rect_t source = {
@@ -300,8 +302,8 @@ static void lvgl_flush_cb(lv_display_t *d, const lv_area_t *area, uint8_t *px_ma
             .x2 = area->x2, .y2 = area->y2,
         };
         epd_refresh_rect_t input = {
-            .x1 = epd_ctx.refresh_area.x1, .y1 = epd_ctx.refresh_area.y1,
-            .x2 = epd_ctx.refresh_area.x2, .y2 = epd_ctx.refresh_area.y2,
+            .x1 = s_display.epd.refresh_area.x1, .y1 = s_display.epd.refresh_area.y1,
+            .x2 = s_display.epd.refresh_area.x2, .y2 = s_display.epd.refresh_area.y2,
         };
         epd_refresh_rect_t scan;
         if (epd_refresh_rect_intersect(&source, &input, &scan)) {
@@ -339,9 +341,9 @@ static void lvgl_flush_cb(lv_display_t *d, const lv_area_t *area, uint8_t *px_ma
              * change.  In differential window mode those redraws must not
              * become physical EPD updates.  The first base-sync frame is
              * intentionally exempt so the panel can be established. */
-            if (epd_ctx.flush_mode == EPD_FLUSH_MODE_PARTIAL_WIN &&
-                !epd_ctx.need_sync_base) {
-                bool current_pixel = (epd_ctx.epd_buffer[dst_byte] & dst_mask) != 0;
+            if (s_display.epd.flush_mode == EPD_FLUSH_MODE_PARTIAL_WIN &&
+                !s_display.epd.need_sync_base) {
+                bool current_pixel = (s_display.epd.epd_buffer[dst_byte] & dst_mask) != 0;
                 if (current_pixel == (pixel != 0)) {
                     continue;
                 }
@@ -352,17 +354,17 @@ static void lvgl_flush_cb(lv_display_t *d, const lv_area_t *area, uint8_t *px_ma
             has_valid = true;
 
             if (pixel)
-                epd_ctx.epd_buffer[dst_byte] |= dst_mask;
+                s_display.epd.epd_buffer[dst_byte] |= dst_mask;
             else
-                epd_ctx.epd_buffer[dst_byte] &= (uint8_t)~dst_mask;
+                s_display.epd.epd_buffer[dst_byte] &= (uint8_t)~dst_mask;
         }
     }
 
     if (!has_valid) {
-        if (is_last && !epd_ctx.is_first_flush_in_cycle) {
-            xTaskNotifyGive(s_flush_task);
+        if (is_last && !s_display.epd.is_first_flush_in_cycle) {
+            xTaskNotifyGive(s_display.flush_task);
         }
-        xSemaphoreGive(s_display_mutex);
+        xSemaphoreGive(s_display.mutex);
         lv_display_flush_ready(d);
         return;
     }
@@ -375,8 +377,8 @@ static void lvgl_flush_cb(lv_display_t *d, const lv_area_t *area, uint8_t *px_ma
             .y2 = area->y1 + end_y,
         };
         epd_refresh_rect_t input = {
-            .x1 = epd_ctx.refresh_area.x1, .y1 = epd_ctx.refresh_area.y1,
-            .x2 = epd_ctx.refresh_area.x2, .y2 = epd_ctx.refresh_area.y2,
+            .x1 = s_display.epd.refresh_area.x1, .y1 = s_display.epd.refresh_area.y1,
+            .x2 = s_display.epd.refresh_area.x2, .y2 = s_display.epd.refresh_area.y2,
         };
         epd_refresh_rect_t stable_window;
         lv_area_t panel_window;
@@ -389,21 +391,21 @@ static void lvgl_flush_cb(lv_display_t *d, const lv_area_t *area, uint8_t *px_ma
         }
     }
 
-    if (epd_ctx.is_first_flush_in_cycle) {
-        epd_ctx.dirty_area.x1 = min_px; epd_ctx.dirty_area.y1 = min_py;
-        epd_ctx.dirty_area.x2 = max_px; epd_ctx.dirty_area.y2 = max_py;
-        epd_ctx.is_first_flush_in_cycle = false;
+    if (s_display.epd.is_first_flush_in_cycle) {
+        s_display.epd.dirty_area.x1 = min_px; s_display.epd.dirty_area.y1 = min_py;
+        s_display.epd.dirty_area.x2 = max_px; s_display.epd.dirty_area.y2 = max_py;
+        s_display.epd.is_first_flush_in_cycle = false;
     } else {
-        epd_ctx.dirty_area.x1 = MIN(epd_ctx.dirty_area.x1, min_px);
-        epd_ctx.dirty_area.y1 = MIN(epd_ctx.dirty_area.y1, min_py);
-        epd_ctx.dirty_area.x2 = MAX(epd_ctx.dirty_area.x2, max_px);
-        epd_ctx.dirty_area.y2 = MAX(epd_ctx.dirty_area.y2, max_py);
+        s_display.epd.dirty_area.x1 = MIN(s_display.epd.dirty_area.x1, min_px);
+        s_display.epd.dirty_area.y1 = MIN(s_display.epd.dirty_area.y1, min_py);
+        s_display.epd.dirty_area.x2 = MAX(s_display.epd.dirty_area.x2, max_px);
+        s_display.epd.dirty_area.y2 = MAX(s_display.epd.dirty_area.y2, max_py);
     }
 
     if (is_last) {
-        xTaskNotifyGive(s_flush_task);
+        xTaskNotifyGive(s_display.flush_task);
     }
-    xSemaphoreGive(s_display_mutex);
+    xSemaphoreGive(s_display.mutex);
     lv_display_flush_ready(d);
 }
 
@@ -440,201 +442,201 @@ void display_control_init(void)
     EPD_WhiteScreen_White();
 
     // Allocate EPD framebuffers: prefer PSRAM, fall back to internal DRAM
-    epd_ctx.epd_buffer = (uint8_t *)epd_alloc_frame();
-    if (!epd_ctx.epd_buffer) { ESP_LOGE(TAG, "framebuffer allocation failed"); return; }
-    memset(epd_ctx.epd_buffer, 0xFF, EPD_ARRAY);
+    s_display.epd.epd_buffer = (uint8_t *)epd_alloc_frame();
+    if (!s_display.epd.epd_buffer) { ESP_LOGE(TAG, "framebuffer allocation failed"); return; }
+    memset(s_display.epd.epd_buffer, 0xFF, EPD_ARRAY);
 
-    epd_ctx.epd_buffer_4g = (uint8_t *)epd_alloc_frame();
-    if (!epd_ctx.epd_buffer_4g) {
+    s_display.epd.epd_buffer_4g = (uint8_t *)epd_alloc_frame();
+    if (!s_display.epd.epd_buffer_4g) {
         ESP_LOGE(TAG, "4-gray framebuffer allocation failed");
-        heap_caps_free(epd_ctx.epd_buffer); epd_ctx.epd_buffer = NULL;
+        heap_caps_free(s_display.epd.epd_buffer); s_display.epd.epd_buffer = NULL;
         return;
     }
-    memset(epd_ctx.epd_buffer_4g, 0, EPD_ARRAY);
+    memset(s_display.epd.epd_buffer_4g, 0, EPD_ARRAY);
 
-    s_hw_buffer = epd_alloc_frame();
-    s_hw_buffer_4g = epd_alloc_frame();
-    if (!s_hw_buffer || !s_hw_buffer_4g) {
+    s_display.hw_buffer = epd_alloc_frame();
+    s_display.hw_buffer_4g = epd_alloc_frame();
+    if (!s_display.hw_buffer || !s_display.hw_buffer_4g) {
         ESP_LOGE(TAG, "Failed to allocate hardware frame snapshots");
-        heap_caps_free(s_hw_buffer); s_hw_buffer = NULL;
-        heap_caps_free(s_hw_buffer_4g); s_hw_buffer_4g = NULL;
-        heap_caps_free(epd_ctx.epd_buffer); epd_ctx.epd_buffer = NULL;
-        heap_caps_free(epd_ctx.epd_buffer_4g); epd_ctx.epd_buffer_4g = NULL;
+        heap_caps_free(s_display.hw_buffer); s_display.hw_buffer = NULL;
+        heap_caps_free(s_display.hw_buffer_4g); s_display.hw_buffer_4g = NULL;
+        heap_caps_free(s_display.epd.epd_buffer); s_display.epd.epd_buffer = NULL;
+        heap_caps_free(s_display.epd.epd_buffer_4g); s_display.epd.epd_buffer_4g = NULL;
         return;
     }
-    memset(s_hw_buffer, 0xFF, EPD_ARRAY);
-    memset(s_hw_buffer_4g, 0, EPD_ARRAY);
+    memset(s_display.hw_buffer, 0xFF, EPD_ARRAY);
+    memset(s_display.hw_buffer_4g, 0, EPD_ARRAY);
 
-    epd_ctx.screen_w = LCD_H_RES;
-    epd_ctx.screen_h = LCD_V_RES;
+    s_display.epd.screen_w = LCD_H_RES;
+    s_display.epd.screen_h = LCD_V_RES;
 
-    disp = lv_display_create(epd_ctx.screen_w, epd_ctx.screen_h);
-    if (!disp) {
+    s_display.display = lv_display_create(s_display.epd.screen_w, s_display.epd.screen_h);
+    if (!s_display.display) {
         ESP_LOGE(TAG, "LVGL display allocation failed");
-        heap_caps_free(epd_ctx.epd_buffer); epd_ctx.epd_buffer = NULL;
-        heap_caps_free(epd_ctx.epd_buffer_4g); epd_ctx.epd_buffer_4g = NULL;
+        heap_caps_free(s_display.epd.epd_buffer); s_display.epd.epd_buffer = NULL;
+        heap_caps_free(s_display.epd.epd_buffer_4g); s_display.epd.epd_buffer_4g = NULL;
         return;
     }
 
     // Monochrome (1bpp) — the flush callback treats px_map as packed 1-bit data
-    lv_display_set_color_format(disp, LV_COLOR_FORMAT_I1);
+    lv_display_set_color_format(s_display.display, LV_COLOR_FORMAT_I1);
 
     /* lv_display_set_buffers() 会断言 buf 按 LV_DRAW_BUF_ALIGN(4) 对齐。
      * uint8_t 数组默认只保证 1 字节对齐，显式标注免得换编译器/改大小时踩到。 */
-    static uint8_t buf1[DRAW_BUF_SIZE] __attribute__((aligned(4)));
-    lv_display_set_flush_cb(disp, lvgl_flush_cb);
-    lv_display_add_event_cb(disp, lvgl_rounder_cb, LV_EVENT_INVALIDATE_AREA, NULL);
-    lv_display_set_buffers(disp, buf1, NULL, DRAW_BUF_SIZE, LV_DISPLAY_RENDER_MODE_PARTIAL);
-    lv_display_set_default(disp);
+    lv_display_set_flush_cb(s_display.display, lvgl_flush_cb);
+    lv_display_add_event_cb(s_display.display, lvgl_rounder_cb, LV_EVENT_INVALIDATE_AREA, NULL);
+    lv_display_set_buffers(s_display.display, s_display.draw_buffer, NULL,
+                           DRAW_BUF_SIZE, LV_DISPLAY_RENDER_MODE_PARTIAL);
+    lv_display_set_default(s_display.display);
 
-    epd_ctx.state = DISPLAY_STATE_AWAKE;
-    epd_ctx.flush_mode = EPD_FLUSH_MODE_PARTIAL_ALL;
+    s_display.epd.state = DISPLAY_STATE_AWAKE;
+    s_display.epd.flush_mode = EPD_FLUSH_MODE_PARTIAL_ALL;
 
     // Create mutex
-    s_display_mutex = xSemaphoreCreateMutex();
+    s_display.mutex = xSemaphoreCreateMutex();
 
     // Create flush background task
-    xTaskCreate(flush_task, "epd_flush", 4096, NULL, 5, &s_flush_task);
+    xTaskCreate(flush_task, "epd_flush", 4096, NULL, 5, &s_display.flush_task);
 
     // Start LVGL tick timer
-    s_lvgl_tick_timer = xTimerCreate("lvgl_tick",
+    s_display.lvgl_tick_timer = xTimerCreate("lvgl_tick",
                                      pdMS_TO_TICKS(LVGL_TICK_PERIOD_MS),
                                      pdTRUE, NULL, lvgl_tick_cb);
-    xTimerStart(s_lvgl_tick_timer, 0);
+    xTimerStart(s_display.lvgl_tick_timer, 0);
 
-    ESP_LOGI(TAG, "Display controller initialized (%d×%d)", epd_ctx.screen_w, epd_ctx.screen_h);
+    ESP_LOGI(TAG, "Display controller initialized (%d×%d)", s_display.epd.screen_w, s_display.epd.screen_h);
 }
 
 void display_control_deinit(void)
 {
-    if (s_flush_task) { vTaskDelete(s_flush_task); s_flush_task = NULL; }
-    if (s_lvgl_tick_timer) { xTimerDelete(s_lvgl_tick_timer, 0); s_lvgl_tick_timer = NULL; }
-    if (s_display_mutex) { vSemaphoreDelete(s_display_mutex); s_display_mutex = NULL; }
-    heap_caps_free(epd_ctx.epd_buffer); epd_ctx.epd_buffer = NULL;
-    heap_caps_free(epd_ctx.epd_buffer_4g); epd_ctx.epd_buffer_4g = NULL;
-    heap_caps_free(s_hw_buffer); s_hw_buffer = NULL;
-    heap_caps_free(s_hw_buffer_4g); s_hw_buffer_4g = NULL;
+    if (s_display.flush_task) { vTaskDelete(s_display.flush_task); s_display.flush_task = NULL; }
+    if (s_display.lvgl_tick_timer) { xTimerDelete(s_display.lvgl_tick_timer, 0); s_display.lvgl_tick_timer = NULL; }
+    if (s_display.mutex) { vSemaphoreDelete(s_display.mutex); s_display.mutex = NULL; }
+    heap_caps_free(s_display.epd.epd_buffer); s_display.epd.epd_buffer = NULL;
+    heap_caps_free(s_display.epd.epd_buffer_4g); s_display.epd.epd_buffer_4g = NULL;
+    heap_caps_free(s_display.hw_buffer); s_display.hw_buffer = NULL;
+    heap_caps_free(s_display.hw_buffer_4g); s_display.hw_buffer_4g = NULL;
 }
 
 // ── Orientation ────────────────────────────────────────────────────────
 
 void epd_display_set_orientation(epd_orientation_t orient)
 {
-    if (orient > EPD_ORIENT_LANDSCAPE_INVERTED || epd_ctx.orientation == orient) return;
-    epd_ctx.orientation = orient;
+    if (orient > EPD_ORIENT_LANDSCAPE_INVERTED || s_display.epd.orientation == orient) return;
+    s_display.epd.orientation = orient;
     if (orient == EPD_ORIENT_PORTRAIT || orient == EPD_ORIENT_PORTRAIT_INVERTED) {
-        lv_display_set_resolution(disp, LCD_H_RES, LCD_V_RES);
-        epd_ctx.screen_w = LCD_H_RES; epd_ctx.screen_h = LCD_V_RES;
+        lv_display_set_resolution(s_display.display, LCD_H_RES, LCD_V_RES);
+        s_display.epd.screen_w = LCD_H_RES; s_display.epd.screen_h = LCD_V_RES;
     } else {
-        lv_display_set_resolution(disp, LCD_V_RES, LCD_H_RES);
-        epd_ctx.screen_w = LCD_V_RES; epd_ctx.screen_h = LCD_H_RES;
+        lv_display_set_resolution(s_display.display, LCD_V_RES, LCD_H_RES);
+        s_display.epd.screen_w = LCD_V_RES; s_display.epd.screen_h = LCD_H_RES;
     }
     lv_obj_invalidate(lv_screen_active());
 }
 
-epd_orientation_t epd_display_get_orientation(void) { return epd_ctx.orientation; }
+epd_orientation_t epd_display_get_orientation(void) { return s_display.epd.orientation; }
 
 // ── Flush mode ─────────────────────────────────────────────────────────
 
 void epd_display_set_flush_mode(epd_flush_mode_t mode)
 {
-    if (s_display_mutex) xSemaphoreTake(s_display_mutex, portMAX_DELAY);
-    epd_ctx.flush_mode = mode;
-    epd_ctx.next_frame_flush_mode = false;
-    epd_ctx.transition_frame_ready = false;
-    epd_ctx.need_sync_base = mode == EPD_FLUSH_MODE_PARTIAL_WIN;
+    if (s_display.mutex) xSemaphoreTake(s_display.mutex, portMAX_DELAY);
+    s_display.epd.flush_mode = mode;
+    s_display.epd.next_frame_flush_mode = false;
+    s_display.epd.transition_frame_ready = false;
+    s_display.epd.need_sync_base = mode == EPD_FLUSH_MODE_PARTIAL_WIN;
     if (mode != EPD_FLUSH_MODE_PARTIAL_WIN) {
-        epd_ctx.has_refresh_area = false;
+        s_display.epd.has_refresh_area = false;
     }
-    if (s_display_mutex) xSemaphoreGive(s_display_mutex);
+    if (s_display.mutex) xSemaphoreGive(s_display.mutex);
 }
 
 void epd_display_set_flush_mode_next_frame(epd_flush_mode_t mode)
 {
-    if (s_display_mutex) xSemaphoreTake(s_display_mutex, portMAX_DELAY);
-    epd_ctx.next_frame_flush_mode = true;
-    epd_ctx.requested_flush_mode = mode;
-    epd_ctx.transition_frame_ready = false;
-    if (s_display_mutex) xSemaphoreGive(s_display_mutex);
+    if (s_display.mutex) xSemaphoreTake(s_display.mutex, portMAX_DELAY);
+    s_display.epd.next_frame_flush_mode = true;
+    s_display.epd.requested_flush_mode = mode;
+    s_display.epd.transition_frame_ready = false;
+    if (s_display.mutex) xSemaphoreGive(s_display.mutex);
 }
 
-epd_flush_mode_t epd_display_get_flush_mode(void) { return epd_ctx.flush_mode; }
+epd_flush_mode_t epd_display_get_flush_mode(void) { return s_display.epd.flush_mode; }
 
 // ── Buffer ─────────────────────────────────────────────────────────────
 
 void epd_display_clear_buffer(void)
 {
-    if (s_display_mutex) xSemaphoreTake(s_display_mutex, portMAX_DELAY);
-    memset(epd_ctx.epd_buffer, 0xFF, EPD_ARRAY);
-    if (s_display_mutex) xSemaphoreGive(s_display_mutex);
+    if (s_display.mutex) xSemaphoreTake(s_display.mutex, portMAX_DELAY);
+    memset(s_display.epd.epd_buffer, 0xFF, EPD_ARRAY);
+    if (s_display.mutex) xSemaphoreGive(s_display.mutex);
 }
 
 void epd_display_flush_once(epd_flush_mode_t mode)
 {
     if (mode == EPD_FLUSH_MODE_PARTIAL_ALL)
-        EPD_Dis_PartAll(epd_ctx.epd_buffer);
+        EPD_Dis_PartAll(s_display.epd.epd_buffer);
     else
-        EPD_WhiteScreen_ALL(epd_ctx.epd_buffer);
+        EPD_WhiteScreen_ALL(s_display.epd.epd_buffer);
 }
 
 void epd_display_sync_base(void)
 {
-    EPD_Sync_Base_Map(epd_ctx.epd_buffer);
+    EPD_Sync_Base_Map(s_display.epd.epd_buffer);
 }
 
 void epd_display_set_refresh_area(bool enable, const lv_area_t *area)
 {
     if (enable && !area) return;
-    if (s_display_mutex) xSemaphoreTake(s_display_mutex, portMAX_DELAY);
-    epd_ctx.has_refresh_area = enable;
+    if (s_display.mutex) xSemaphoreTake(s_display.mutex, portMAX_DELAY);
+    s_display.epd.has_refresh_area = enable;
     if (enable) {
-        epd_ctx.refresh_area.x1 = MAX(area->x1, 0);
-        epd_ctx.refresh_area.y1 = MAX(area->y1, 0);
-        epd_ctx.refresh_area.x2 = MIN(area->x2, (int32_t)epd_ctx.screen_w - 1);
-        epd_ctx.refresh_area.y2 = MIN(area->y2, (int32_t)epd_ctx.screen_h - 1);
-        if (epd_ctx.refresh_area.x1 > epd_ctx.refresh_area.x2 ||
-            epd_ctx.refresh_area.y1 > epd_ctx.refresh_area.y2) {
-            epd_ctx.has_refresh_area = false;
+        s_display.epd.refresh_area.x1 = MAX(area->x1, 0);
+        s_display.epd.refresh_area.y1 = MAX(area->y1, 0);
+        s_display.epd.refresh_area.x2 = MIN(area->x2, (int32_t)s_display.epd.screen_w - 1);
+        s_display.epd.refresh_area.y2 = MIN(area->y2, (int32_t)s_display.epd.screen_h - 1);
+        if (s_display.epd.refresh_area.x1 > s_display.epd.refresh_area.x2 ||
+            s_display.epd.refresh_area.y1 > s_display.epd.refresh_area.y2) {
+            s_display.epd.has_refresh_area = false;
         }
     }
-    if (s_display_mutex) xSemaphoreGive(s_display_mutex);
+    if (s_display.mutex) xSemaphoreGive(s_display.mutex);
 }
 
 // ── Resolution ─────────────────────────────────────────────────────────
 
-uint16_t epd_display_control_get_vertical_resolution(void)   { return epd_ctx.screen_h; }
-uint16_t epd_display_control_get_horizontal_resolution(void) { return epd_ctx.screen_w; }
+uint16_t epd_display_control_get_vertical_resolution(void)   { return s_display.epd.screen_h; }
+uint16_t epd_display_control_get_horizontal_resolution(void) { return s_display.epd.screen_w; }
 
 // ── Sleep / power ──────────────────────────────────────────────────────
 
 int epd_display_control_sleep_ctrl(bool on)
 {
-    xSemaphoreTake(s_display_mutex, portMAX_DELAY);
+    xSemaphoreTake(s_display.mutex, portMAX_DELAY);
     int res = 0;
 
-    if (epd_ctx.state == DISPLAY_STATE_AWAKE && !on) {
+    if (s_display.epd.state == DISPLAY_STATE_AWAKE && !on) {
         ESP_LOGD(TAG, "Put display to sleep");
         vTaskDelay(pdMS_TO_TICKS(100));
-        epd_ctx.state = DISPLAY_STATE_SLEEPING;
+        s_display.epd.state = DISPLAY_STATE_SLEEPING;
         EPD_DeepSleep();
         lv_obj_invalidate(lv_screen_active());
-    } else if (epd_ctx.state == DISPLAY_STATE_SLEEPING && on) {
+    } else if (s_display.epd.state == DISPLAY_STATE_SLEEPING && on) {
         ESP_LOGD(TAG, "Wake up display");
-        epd_ctx.state = DISPLAY_STATE_AWAKE;
+        s_display.epd.state = DISPLAY_STATE_AWAKE;
         EPD_HW_Init();
-        epd_ctx.need_hw_sync_after_wakeup = true;
+        s_display.epd.need_hw_sync_after_wakeup = true;
     }
 
-    xSemaphoreGive(s_display_mutex);
+    xSemaphoreGive(s_display.mutex);
     return res;
 }
 
 int epd_display_control_pwr_ctrl(bool on)
 {
-    if (on && epd_ctx.state == DISPLAY_STATE_POWERED_OFF)
-        epd_ctx.state = DISPLAY_STATE_SLEEPING;
-    else if (!on && epd_ctx.state == DISPLAY_STATE_SLEEPING)
-        epd_ctx.state = DISPLAY_STATE_POWERED_OFF;
+    if (on && s_display.epd.state == DISPLAY_STATE_POWERED_OFF)
+        s_display.epd.state = DISPLAY_STATE_SLEEPING;
+    else if (!on && s_display.epd.state == DISPLAY_STATE_SLEEPING)
+        s_display.epd.state = DISPLAY_STATE_POWERED_OFF;
     return 0;
 }
 
@@ -673,21 +675,21 @@ static void epd_convert_2bpp_to_4gray_planes(const uint8_t *image_2bpp,
 
 void epd_display_show_4gray_image(const uint8_t *image_2bpp)
 {
-    if (!epd_ctx.epd_buffer || !epd_ctx.epd_buffer_4g) return;
-    epd_convert_2bpp_to_4gray_planes(image_2bpp, epd_ctx.epd_buffer, epd_ctx.epd_buffer_4g);
-    if (!epd_ctx.is_4g_lut_loaded) {
+    if (!s_display.epd.epd_buffer || !s_display.epd.epd_buffer_4g) return;
+    epd_convert_2bpp_to_4gray_planes(image_2bpp, s_display.epd.epd_buffer, s_display.epd.epd_buffer_4g);
+    if (!s_display.epd.is_4g_lut_loaded) {
         EPD_HW_Init_4G();
-        epd_ctx.is_4g_lut_loaded = true;
+        s_display.epd.is_4g_lut_loaded = true;
     }
-    EPD_Update_4Gray_WithBuffers(epd_ctx.epd_buffer, epd_ctx.epd_buffer_4g);
+    EPD_Update_4Gray_WithBuffers(s_display.epd.epd_buffer, s_display.epd.epd_buffer_4g);
 }
 
 void epd_display_show_4gray_buffers(const uint8_t *ram1, const uint8_t *ram2)
 {
     if (!ram1 || !ram2) return;
-    if (!epd_ctx.is_4g_lut_loaded) {
+    if (!s_display.epd.is_4g_lut_loaded) {
         EPD_HW_Init_4G();
-        epd_ctx.is_4g_lut_loaded = true;
+        s_display.epd.is_4g_lut_loaded = true;
     }
     EPD_Update_4Gray_WithBuffers(ram1, ram2);
 }
@@ -695,11 +697,11 @@ void epd_display_show_4gray_buffers(const uint8_t *ram1, const uint8_t *ram2)
 void epd_display_enter_4gray_mode(void)
 {
     EPD_HW_Init_4G();
-    epd_ctx.is_4g_lut_loaded = true;
+    s_display.epd.is_4g_lut_loaded = true;
 }
 
 void epd_display_exit_4gray_mode(void)
 {
     EPD_HW_Init();
-    epd_ctx.is_4g_lut_loaded = false;
+    s_display.epd.is_4g_lut_loaded = false;
 }

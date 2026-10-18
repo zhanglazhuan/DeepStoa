@@ -10,6 +10,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
+#include "driver/i2c_master.h"
 
 #include "deepstoa_v1.h"
 #include "aw9523.h"
@@ -60,11 +61,26 @@ void app_main(void)
         return;
     }
 
-    // FT6336 reset is active-low and driven by AW9523 P1.4.
+    // J8 touch power comes from LCD_3V3 (schematic pages 2 and 6).
+    // AW9523 starts with LCD_Power disabled. Hold touch reset low while
+    // enabling the shared display/touch rail through P1.7.
     aw9523_set_pin(DEEPV1_AW_PIN_TOUCH_RST, 0);
+    ESP_LOGI(TAG, "Enable LCD_3V3 for touch (AW9523 P1.7)");
+    aw9523_set_pin(DEEPV1_AW_PIN_LCD_POWER, 1);
+    vTaskDelay(pdMS_TO_TICKS(50));
+
+    // FT6336 reset is active-low and driven by AW9523 P1.4.
     vTaskDelay(pdMS_TO_TICKS(10));
     aw9523_set_pin(DEEPV1_AW_PIN_TOUCH_RST, 1);
     vTaskDelay(pdMS_TO_TICKS(350));
+
+    ret = i2c_master_probe(aw9523_get_i2c_bus(), DEEPV1_TOUCH_I2C_ADDR, 100);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Touch probe at 0x%02X failed: %s. Check J8 power, reset and cable.",
+                 DEEPV1_TOUCH_I2C_ADDR, esp_err_to_name(ret));
+        return;
+    }
+    ESP_LOGI(TAG, "Touch device ACK at 0x%02X", DEEPV1_TOUCH_I2C_ADDR);
 
     // Step 2: Attach FT6336 to the I2C bus already owned by AW9523.
     ESP_LOGI(TAG, "Step 2: Init FT6336 at 0x%02X...", DEEPV1_TOUCH_I2C_ADDR);
@@ -86,15 +102,34 @@ void app_main(void)
         } else {
             ESP_LOGI(TAG, "PASS: FT6336U detected");
         }
+    } else {
+        ESP_LOGE(TAG, "Chip ID read failed: %s", esp_err_to_name(ret));
+        return;
     }
 
     ESP_LOGI(TAG, "=== Touch polling started (touch the screen) ===");
 
     // Step 4: Poll touch data continuously
     uint32_t tick = 0;
+    uint32_t read_errors = 0;
     while (1) {
         ft6336_touch_data_t data;
         ret = ft6336_read(&data);
+
+        if (ret != ESP_OK) {
+            if (read_errors++ % 20 == 0) {
+                ESP_LOGE(TAG, "Touch read failed: %s (consecutive errors=%lu)",
+                         esp_err_to_name(ret), (unsigned long)read_errors);
+            }
+        } else {
+            if (read_errors > 0) {
+                ESP_LOGI(TAG, "Touch reads recovered");
+            }
+            read_errors = 0;
+            if (tick % 100 == 0) {
+                ESP_LOGI(TAG, "Polling alive: I2C read OK, active touches=%u", data.count);
+            }
+        }
 
         if (ret == ESP_OK && data.count > 0) {
             ESP_LOGI(TAG, "[%lu] Touches=%d Gesture=%s",

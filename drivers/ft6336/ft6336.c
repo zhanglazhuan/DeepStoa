@@ -5,6 +5,7 @@
 // Uses ESP-IDF v5.x i2c_master API.
 
 #include "ft6336.h"
+#include <string.h>
 #include "driver/i2c_master.h"
 #include "driver/gpio.h"
 #include "esp_log.h"
@@ -163,11 +164,19 @@ esp_err_t ft6336_init(i2c_port_t i2c_port, gpio_num_t sda_pin, gpio_num_t scl_pi
 
     // ── Default configuration ──────────────────────────────────────
     // Set to normal operating mode (wake from any previous sleep)
-    ft6336_write_reg(FT6336_REG_POWER_MODE, 0x00);
+    ret = ft6336_write_reg(FT6336_REG_POWER_MODE, 0x00);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Configuration write failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
     vTaskDelay(pdMS_TO_TICKS(50));
 
     // Set default threshold
-    ft6336_write_reg(FT6336_REG_THRESHOLD, 30);
+    ret = ft6336_write_reg(FT6336_REG_THRESHOLD, 30);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Threshold write failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
 
     ESP_LOGI(TAG, "FT6336 initialized successfully");
     return ESP_OK;
@@ -212,10 +221,27 @@ esp_err_t ft6336_init_shared(void *bus, gpio_num_t rst_pin, uint8_t i2c_addr)
     // ── Hardware reset ─────────────────────────────────────────────
     ft6336_hw_reset();
 
+    uint8_t chip_id;
+    ret = ft6336_get_chip_id(&chip_id);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to read chip ID at 0x%02X: %s", i2c_addr,
+                 esp_err_to_name(ret));
+        return ret;
+    }
+    ESP_LOGI(TAG, "Chip ID register: 0x%02X", chip_id);
+
     // ── Default configuration ──────────────────────────────────────
-    ft6336_write_reg(FT6336_REG_POWER_MODE, 0x00);
+    ret = ft6336_write_reg(FT6336_REG_POWER_MODE, 0x00);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Configuration write failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
     vTaskDelay(pdMS_TO_TICKS(50));
-    ft6336_write_reg(FT6336_REG_THRESHOLD, 30);
+    ret = ft6336_write_reg(FT6336_REG_THRESHOLD, 30);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Threshold write failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
 
     ESP_LOGI(TAG, "FT6336 initialized on shared bus");
     return ESP_OK;

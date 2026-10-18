@@ -4,7 +4,9 @@ CONFIG_IDF_TARGET_ESP32S3=y
 # ESP32-S3 PSRAM (external 8MB octal, needed for display framebuffers)
 CONFIG_SPIRAM=y
 CONFIG_SPIRAM_MODE_OCT=y
-CONFIG_SPIRAM_SPEED_80M=y
+CONFIG_SPIRAM_SPEED_40M=y
+# Match the verified microphone/AEC test clock configuration.
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
 CONFIG_SPIRAM_IGNORE_NOTFOUND=y
 
 # PSRAM 并入默认堆。原来是 SPIRAM_USE_CAPS_ALLOC —— 那样 malloc() 只能拿到

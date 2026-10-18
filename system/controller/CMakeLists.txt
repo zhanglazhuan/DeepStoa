@@ -33,7 +33,7 @@ idf_component_register(
         esp_rom
         fatfs
         wear_levelling
-    PRIV_REQUIRES
+    PRIV_REQUIRES aw9523
         ft6336
         esp_timer
 )

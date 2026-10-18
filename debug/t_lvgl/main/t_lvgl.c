@@ -8,6 +8,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 
 #include "deepstoa_v1.h"
 #include "aw9523.h"
@@ -29,11 +30,26 @@ static const char *TAG = "t_lvgl";
 
 static uint8_t *s_epd_buf = NULL;
 static lv_display_t *s_disp = NULL;
+static lv_obj_t *s_bench_label;
+static unsigned s_frame;
+static int64_t s_convert_us;
+
+/* A timeout is a failed measurement, never a measured panel refresh rate. */
+static bool wait_idle(void)
+{
+    int64_t deadline = esp_timer_get_time() + 10000000;
+    while (epd_is_busy()) {
+        if (esp_timer_get_time() >= deadline) return false;
+        vTaskDelay(1);
+    }
+    return true;
+}
 
 // ── LVGL flush ──────────────────────────────────────────────────────
 
 static void lvgl_flush_cb(lv_display_t *d, const lv_area_t *area, uint8_t *px_map)
 {
+    int64_t convert_start = esp_timer_get_time();
     int32_t w = lv_area_get_width(area);
     int32_t h = lv_area_get_height(area);
     uint8_t *buf_ptr = px_map + LVGL_BUF_OFFSET;
@@ -63,9 +79,35 @@ static void lvgl_flush_cb(lv_display_t *d, const lv_area_t *area, uint8_t *px_ma
         }
     }
 
+    s_convert_us += esp_timer_get_time() - convert_start;
     if (lv_display_flush_is_last(d)) {
-        while (epd_is_busy()) vTaskDelay(pdMS_TO_TICKS(10));
+        int64_t start = esp_timer_get_time();
+        bool pre_ready = wait_idle();
+        int64_t tx_start = esp_timer_get_time();
+        /* Preserve the debug driver's timeout-and-continue diagnostic behavior. */
         EPD_Dis_PartAll_Async(s_epd_buf);
+        int64_t tx_end = esp_timer_get_time();
+        bool saw_high = false, released = false;
+        /* Allow BUSY assertion after the refresh command before accepting idle. */
+        while (esp_timer_get_time() - tx_end < 10000000) {
+            bool busy = epd_is_busy();
+            saw_high |= busy;
+            if (saw_high && !busy) { released = true; break; }
+            vTaskDelay(1);
+        }
+        int64_t end = esp_timer_get_time();
+        bool valid = pre_ready && released;
+        ESP_LOGI(TAG, "[refresh] frame=%u convert=%.2f ms pre_wait=%.2f ms "
+                 "submit=%.2f ms post_wait=%.2f ms total=%.2f ms "
+                 "pre_ready=%d busy_seen=%d released=%d valid=%d",
+                 ++s_frame, s_convert_us / 1000.0, (tx_start-start) / 1000.0,
+                 (tx_end-tx_start) / 1000.0, (end-tx_end) / 1000.0,
+                 (end-start+s_convert_us) / 1000.0,
+                 pre_ready, saw_high, released, valid);
+        if (valid) ESP_LOGI(TAG, "[refresh] transfer+panel rate=%.3f Hz",
+                           1000000.0 / (end-tx_start));
+        else ESP_LOGW(TAG, "[refresh] panel rate unavailable: BUSY handshake invalid");
+        s_convert_us = 0;
     }
     lv_display_flush_ready(d);
 }
@@ -83,7 +125,7 @@ static void lvgl_rounder_cb(lv_event_t *e)
 
 // ── LVGL tick ───────────────────────────────────────────────────────
 
-static void lvgl_tick_cb(lv_timer_t *t) { lv_tick_inc(5); }
+static uint32_t lvgl_now_ms(void) { return (uint32_t)(esp_timer_get_time() / 1000); }
 
 // ── Touch ───────────────────────────────────────────────────────────
 
@@ -138,6 +180,12 @@ static void build_ui(void)
     }
 
     lv_tab_finalize(tab);
+    s_bench_label = lv_label_create(lv_layer_top());
+    lv_obj_align(s_bench_label, LV_ALIGN_BOTTOM_MID, 0, -20);
+    lv_obj_set_style_text_color(s_bench_label, lv_color_black(), 0);
+    lv_obj_set_style_bg_color(s_bench_label, lv_color_white(), 0);
+    lv_obj_set_style_bg_opa(s_bench_label, LV_OPA_COVER, 0);
+    lv_label_set_text(s_bench_label, "Refresh benchmark");
 }
 
 // ── Main ────────────────────────────────────────────────────────────
@@ -145,11 +193,17 @@ static void build_ui(void)
 void app_main(void)
 {
     ESP_LOGI(TAG, "=== t_lvgl: lv_tab Test ===");
+    /* Match production's approximate display startup time for comparison. */
+    vTaskDelay(pdMS_TO_TICKS(2200));
 
     // Init EPD
+    int64_t init_start = esp_timer_get_time();
     epd_gpio_config();
     EPD_HW_Init();
+    ESP_LOGI(TAG, "[refresh] hardware init=%.2f ms", (esp_timer_get_time()-init_start)/1000.0);
+    int64_t clear_start = esp_timer_get_time();
     EPD_WhiteScreen_White();
+    ESP_LOGI(TAG, "[refresh] initial clear=%.2f ms", (esp_timer_get_time()-clear_start)/1000.0);
     s_epd_buf = malloc(EPD_BUF_SIZE);
     assert(s_epd_buf);
     memset(s_epd_buf, 0xFF, EPD_BUF_SIZE);
@@ -158,12 +212,12 @@ void app_main(void)
     lv_init();
     s_disp = lv_display_create(LCD_W, LCD_H);
     lv_display_set_color_format(s_disp, LV_COLOR_FORMAT_I1);
-    static uint8_t lvgl_buf[LVGL_BUF_SIZE];
+    static uint8_t lvgl_buf[LVGL_BUF_SIZE] __attribute__((aligned(4)));
     lv_display_set_flush_cb(s_disp, lvgl_flush_cb);
     lv_display_add_event_cb(s_disp, lvgl_rounder_cb, LV_EVENT_INVALIDATE_AREA, NULL);
     lv_display_set_buffers(s_disp, lvgl_buf, NULL, LVGL_BUF_SIZE, LV_DISPLAY_RENDER_MODE_PARTIAL);
     lv_display_set_default(s_disp);
-    lv_timer_create(lvgl_tick_cb, 5, NULL);
+    lv_tick_set_cb(lvgl_now_ms);
 
     // Init touch
     touch_init();
@@ -171,12 +225,16 @@ void app_main(void)
     // Build UI
     build_ui();
 
-    // Render
-    lv_refr_now(s_disp);
-    while (epd_is_busy()) vTaskDelay(pdMS_TO_TICKS(10));
-    vTaskDelay(pdMS_TO_TICKS(500));
-
-    ESP_LOGI(TAG, "=== DONE ===");
-    EPD_DeepSleep();
-    while (1) { vTaskDelay(pdMS_TO_TICKS(1000)); }
+    ESP_LOGI(TAG, "[refresh] 5 full-frame partial updates; submit includes SPI + AW9523 control, not panel waveform");
+    for (unsigned i = 1; i <= 5; ++i) {
+        lv_label_set_text_fmt(s_bench_label, "Refresh benchmark %u / 5", i);
+        lv_obj_invalidate(lv_screen_active());
+        lv_refr_now(s_disp);
+        vTaskDelay(pdMS_TO_TICKS(3000));
+    }
+    ESP_LOGI(TAG, "=== Benchmark done; touch tabs to measure further updates ===");
+    while (1) {
+        lv_timer_handler();
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
 }

@@ -1,0 +1,13 @@
+# Target labels
+ bootloader
+# Source files and their labels
+D:/Codes/DeepStoa/debug/t_touch/build-idf55/CMakeFiles/bootloader
+D:/Codes/DeepStoa/debug/t_touch/build-idf55/CMakeFiles/bootloader.rule
+D:/Codes/DeepStoa/debug/t_touch/build-idf55/CMakeFiles/bootloader-complete.rule
+D:/Codes/DeepStoa/debug/t_touch/build-idf55/bootloader-prefix/src/bootloader-stamp/bootloader-build.rule
+D:/Codes/DeepStoa/debug/t_touch/build-idf55/bootloader-prefix/src/bootloader-stamp/bootloader-configure.rule
+D:/Codes/DeepStoa/debug/t_touch/build-idf55/bootloader-prefix/src/bootloader-stamp/bootloader-download.rule
+D:/Codes/DeepStoa/debug/t_touch/build-idf55/bootloader-prefix/src/bootloader-stamp/bootloader-install.rule
+D:/Codes/DeepStoa/debug/t_touch/build-idf55/bootloader-prefix/src/bootloader-stamp/bootloader-mkdir.rule
+D:/Codes/DeepStoa/debug/t_touch/build-idf55/bootloader-prefix/src/bootloader-stamp/bootloader-patch.rule
+D:/Codes/DeepStoa/debug/t_touch/build-idf55/bootloader-prefix/src/bootloader-stamp/bootloader-update.rule

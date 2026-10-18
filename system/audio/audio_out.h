@@ -6,13 +6,13 @@
  * 本层不知道播放列表、不知道 UI，只负责打开一个文件、出声、报位置。
  *
  * 实现有两份，共用本头文件，由 CMakeLists 二选一编译：
- *   audio_out_mock.c   当前阶段（板子上没有喇叭 / codec）
- *   audio_out_i2s.c    硬件到位后补
+ *   audio_out_mock.c   保留用于 UI 调试
+ *   audio_out_i2s.c    DeepStoa V1：16-bit PCM WAV，16/44.1 kHz
  *
  * ── 实现方必须遵守的契约 ──────────────────────────────────────────────
  *
  * 1. 所有回调必须在 LVGL 线程被调用。真实实现跑在解码任务里，
- *    回调前必须 lv_async_call() 弹回 UI 线程。
+ *    由 LVGL 定时器读取完成事件后派发回调，工作任务不能调用 LVGL。
  *
  * 2. audio_out_position_ms() 会被 1Hz 轮询，必须无锁、快速返回，
  *    不能阻塞在 I2S 或文件读上。

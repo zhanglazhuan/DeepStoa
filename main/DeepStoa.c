@@ -9,7 +9,8 @@
 #include "esp_system.h"
 #include "lvgl.h"
 
-#include "esp32s3_devkit.h"
+#include "deepstoa_v1.h"
+#include "aw9523.h"
 #include "monitor.h"
 #include "flash_control.h"
 #include "display_control.h"
@@ -64,11 +65,13 @@ void app_main(void)
 
     // ---- 3. Init touch ----
     ESP_LOGI(TAG, "Init touch...");
-    esp_err_t ret = ft6336_init(DEVKIT_TOUCH_I2C_PORT,
-                                DEVKIT_PIN_TOUCH_SDA,
-                                DEVKIT_PIN_TOUCH_SCL,
-                                DEVKIT_PIN_TOUCH_RST,
-                                DEVKIT_TOUCH_I2C_ADDR);
+    // The display has initialized AW9523 and enabled the shared LCD_3V3 rail.
+    aw9523_set_pin(DEEPV1_AW_PIN_TOUCH_RST, 0);
+    vTaskDelay(pdMS_TO_TICKS(10));
+    aw9523_set_pin(DEEPV1_AW_PIN_TOUCH_RST, 1);
+    vTaskDelay(pdMS_TO_TICKS(350));
+    esp_err_t ret = ft6336_init_shared(aw9523_get_i2c_bus(), GPIO_NUM_NC,
+                                       DEEPV1_TOUCH_I2C_ADDR);
     if (ret == ESP_OK) {
         touch_control_init();
         ESP_LOGI(TAG, "Touch ready");
@@ -88,7 +91,7 @@ void app_main(void)
     // ---- 3c. Init custom fonts & theme (must be before any UI that uses custom_font_normal) ----
     ESP_LOGI(TAG, "Init fonts & theme...");
     ui_fonts_init();
-    lv_theme_hardcore_init(disp, false, LV_FONT_NORMAL);
+    lv_theme_hardcore_init(lv_display_get_default(), false, LV_FONT_NORMAL);
 
     // ---- 4. Init flash storage ----
     ESP_LOGI(TAG, "Init FlashDB...");
