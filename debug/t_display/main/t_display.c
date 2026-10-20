@@ -1,11 +1,8 @@
 // debug/t_display/main/t_display.c
-// E-ink display test: GDEM0397T81P via ESP-IDF hardware SPI + direct GPIO
+// E-ink display test: GDEM0397T81P on the DeepStoa v1 board
 //
-// Board: ESP32-S3 DevKit (wiring matches Arduino reference)
-// Pin definitions: boards/esp32s3/esp32s3_devkit.h
-//
-// This file uses the display driver logic (init sequences, update functions)
-// preserved from drivers/gdem0397t81p, with hardware SPI transport.
+// SPI is connected directly to the ESP32-S3. DC, RESET and POWER are
+// controlled through the AW9523 according to boards/esp32s3/deepstoa_v1.h.
 
 #include <stdio.h>
 #include <string.h>
@@ -14,23 +11,25 @@
 #include "freertos/task.h"
 #include "esp_log.h"
 
-#include "esp32s3_devkit.h"
 #include "epd_display.h"
+#include "deepstoa_v1.h"
+#include "aw9523.h"
 
 static const char *TAG = "t_display";
 
 // ─── Pattern generators ────────────────────────────────────────────────
 
-// Fill buffer with 8x8 pixel checkerboard pattern
+// The GDEM0397T81P RAM is addressed column-major: one column contains
+// EPD_HEIGHT / 8 bytes, and each byte contains eight vertical pixels.
+// Keep test patterns in the same layout as the panel driver.
 static void fill_checkerboard(uint8_t *buf)
 {
-    const int width_bytes = EPD_WIDTH / 8;  // 60 bytes per row
-    for (int y = 0; y < EPD_HEIGHT; y++) {
-        int y_block = y / 8;
-        for (int x_byte = 0; x_byte < width_bytes; x_byte++) {
-            int x_block = x_byte;
-            uint8_t pixel = ((y_block + x_block) % 2 == 0) ? 0xFF : 0x00;
-            buf[y * width_bytes + x_byte] = pixel;
+    const int bytes_per_column = EPD_HEIGHT / 8;
+    for (int x = 0; x < EPD_WIDTH; x++) {
+        uint8_t *column = &buf[x * bytes_per_column];
+        for (int y_byte = 0; y_byte < bytes_per_column; y_byte++) {
+            uint8_t pixel = ((x / 8 + y_byte) % 2 == 0) ? 0xFF : 0x00;
+            column[y_byte] = pixel;
         }
     }
 }
@@ -38,26 +37,20 @@ static void fill_checkerboard(uint8_t *buf)
 // Fill buffer with 20px border rectangle (white background, black border)
 static void fill_border(uint8_t *buf)
 {
-    const int width_bytes = EPD_WIDTH / 8;
     memset(buf, 0xFF, EPD_ARRAY);  // all white
 
     const int border = 20;
-    // Top and bottom borders
-    for (int y = 0; y < border; y++) {
-        memset(&buf[y * width_bytes], 0x00, width_bytes);                  // top
-        memset(&buf[(EPD_HEIGHT - 1 - y) * width_bytes], 0x00, width_bytes); // bottom
-    }
-    // Left and right borders
-    for (int y = border; y < EPD_HEIGHT - border; y++) {
-        for (int x = 0; x < border; x++) {
-            int byte_idx = y * width_bytes + (x / 8);
-            int bit_idx = 7 - (x % 8);
-            buf[byte_idx] &= ~(1 << bit_idx);   // clear bit = black
-        }
-        for (int x = EPD_WIDTH - border; x < EPD_WIDTH; x++) {
-            int byte_idx = y * width_bytes + (x / 8);
-            int bit_idx = 7 - (x % 8);
-            buf[byte_idx] &= ~(1 << bit_idx);
+    const int bytes_per_column = EPD_HEIGHT / 8;
+    for (int x = 0; x < EPD_WIDTH; x++) {
+        uint8_t *column = &buf[x * bytes_per_column];
+        for (int y_byte = 0; y_byte < bytes_per_column; y_byte++) {
+            for (int bit = 0; bit < 8; bit++) {
+                int y = y_byte * 8 + bit;
+                if (x < border || x >= EPD_WIDTH - border ||
+                    y < border || y >= EPD_HEIGHT - border) {
+                    column[y_byte] &= (uint8_t)~(1U << (7 - bit));
+                }
+            }
         }
     }
 }
@@ -71,6 +64,7 @@ void app_main(void)
     // Step 1: Configure GPIO and SPI
     ESP_LOGI(TAG, "Step 1: Init GPIO and hardware SPI...");
     epd_gpio_config();
+
     ESP_LOGI(TAG, "PASS: GPIO and SPI initialized");
 
     // Step 2: Init display (full update mode)

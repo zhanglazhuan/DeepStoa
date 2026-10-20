@@ -20,6 +20,8 @@ extern "C" {
 
 // ─── Data structures ───────────────────────────────────────────────────
 
+#define FT6336_MAX_TOUCH_POINTS 2U
+
 typedef enum {
     FT6336_EVENT_DOWN    = 0,  // press down
     FT6336_EVENT_UP      = 1,  // lift up
@@ -43,13 +45,14 @@ typedef struct {
     uint16_t y;          // Y coordinate (12-bit)
     uint8_t  weight;     // touch weight / pressure
     uint8_t  area;       // touch area
+    uint8_t  id;         // controller tracking ID (4-bit)
     ft6336_event_t event;
 } ft6336_touch_point_t;
 
 typedef struct {
-    uint8_t  count;              // number of active touch points (0–2)
+    uint8_t  count;              // active points stored in points[] (0-2)
     uint8_t  gesture_id;         // gesture ID from reg 0x01
-    ft6336_touch_point_t points[2];
+    ft6336_touch_point_t points[FT6336_MAX_TOUCH_POINTS];
 } ft6336_touch_data_t;
 
 // ─── API ───────────────────────────────────────────────────────────────
@@ -89,10 +92,13 @@ esp_err_t ft6336_init_shared(void *bus, gpio_num_t rst_pin, uint8_t i2c_addr);
 esp_err_t ft6336_get_chip_id(uint8_t *chip_id);
 
 /**
- * @brief Poll touch data. Reads registers 0x01–0x0E via I2C.
+ * @brief Poll one or two simultaneous touch points.
+ *
+ * Reads registers 0x01-0x0E atomically. Released/reserved entries are removed,
+ * so data->points[0..count-1] always contains only DOWN or CONTACT points.
  *
  * @param data  [out] parsed touch point data
- * @return esp_err_t  ESP_OK on success, ESP_ERR_TIMEOUT if no touch present
+ * @return ESP_OK on success (including count == 0), or an I2C/response error
  */
 esp_err_t ft6336_read(ft6336_touch_data_t *data);
 

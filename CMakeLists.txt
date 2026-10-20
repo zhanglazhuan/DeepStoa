@@ -2,6 +2,8 @@
 cmake_minimum_required(VERSION 3.16)
 
 set(EXTRA_COMPONENT_DIRS
+    ${CMAKE_SOURCE_DIR}/drivers/aw9523
+    ${CMAKE_SOURCE_DIR}/drivers/board_audio
     ${CMAKE_SOURCE_DIR}/drivers/ft6336
     ${CMAKE_SOURCE_DIR}/system/controller
     ${CMAKE_SOURCE_DIR}/system/appmgr

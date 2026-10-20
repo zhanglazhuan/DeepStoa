@@ -1,0 +1,20 @@
+What is ESP-IDF?|Espressif's official development framework for ESP32 chips.
+What function starts an ESP-IDF application?|app_main.
+What does FreeRTOS provide?|Tasks scheduling synchronization and timing primitives.
+What does vTaskDelay do?|It blocks the current task for a specified number of ticks.
+What does pdMS_TO_TICKS convert?|Milliseconds to FreeRTOS tick counts.
+What is a semaphore used for?|Coordinating access or signaling between tasks.
+What is a mutex used for?|Protecting shared state from concurrent access.
+What does ESP_OK mean?|An ESP-IDF operation completed successfully.
+Why check an esp_err_t return value?|To detect and handle a failed operation.
+What does ESP_ERROR_CHECK do?|It aborts when the supplied result is not ESP_OK.
+What is NVS?|Non-volatile key-value storage in flash memory.
+What is GPIO input mode used for?|Reading a digital signal from a pin.
+What is SPI?|A synchronous serial interface using clock and data lines.
+What does a BUSY pin indicate?|Whether a peripheral is still processing an operation.
+Why use a timeout when waiting for BUSY?|To prevent a hardware fault from blocking forever.
+What is DMA?|Hardware that transfers data without continuous CPU copying.
+What does const mean in C?|The object cannot be modified through that identifier.
+What is a stack overflow?|A task exhausts the memory reserved for its call stack.
+What does idf.py build do?|It configures and compiles the ESP-IDF project.
+What does idf.py flash do?|It writes the built firmware images to the target device.

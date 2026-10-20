@@ -5,7 +5,7 @@
 
 // 时间范围切换回调
 static void time_range_cb(lv_event_t *e) {
-    AnkiApp *app = lv_event_get_user_data(e);
+    (void)e;
     // 实现时间范围切换逻辑
 }
 

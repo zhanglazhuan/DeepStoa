@@ -10,8 +10,14 @@
 
 #define VIBRATION_GPIO  GPIO_NUM_48
 
-static bool s_enabled = true;
-static bool s_inited  = false;
+typedef struct {
+    bool enabled;
+    bool initialized;
+} vibration_control_state_t;
+
+static vibration_control_state_t s_vibration = {
+    .enabled = true,
+};
 
 static void init_ledc(void)
 {
@@ -33,13 +39,13 @@ static void init_ledc(void)
         .hpoint = 0,
     };
     ledc_channel_config(&ch);
-    s_inited = true;
+    s_vibration.initialized = true;
 }
 
 int vibration_run_pattern(vibration_pattern_t pattern)
 {
-    if (!s_enabled) return -1;
-    if (!s_inited) init_ledc();
+    if (!s_vibration.enabled) return -1;
+    if (!s_vibration.initialized) init_ledc();
 
     uint32_t duty = 0;
     int duration_ms = 100;
@@ -64,8 +70,8 @@ int vibration_run_pattern(vibration_pattern_t pattern)
 
 int vibration_set_enabled(bool enable)
 {
-    s_enabled = enable;
-    if (!enable && s_inited) {
+    s_vibration.enabled = enable;
+    if (!enable && s_vibration.initialized) {
         ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, 0);
         ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
     }

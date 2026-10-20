@@ -18,6 +18,9 @@ typedef uint8_t UBYTE;
 // GPIO and SPI setup
 void epd_gpio_config(void);
 bool epd_is_busy(void);
+// Same bounded BUSY wait used by the verified display test. False means
+// timeout; callers may continue transmitting as the diagnostic driver does.
+bool epd_wait_ready(void);
 
 // Full screen update display
 void EPD_HW_Init(void);

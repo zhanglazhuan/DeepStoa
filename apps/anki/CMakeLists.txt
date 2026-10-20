@@ -7,6 +7,9 @@ idf_component_register(
         "controller.c"
         "view.c"
         "storage.c"
+        "scheduler.c"
+        "source_sync.c"
+        "trash.c"
         "subpages/controller_decks.c"
         "subpages/controller_settings.c"
         "subpages/controller_study.c"
@@ -14,10 +17,11 @@ idf_component_register(
         "subpages/view_decks.c"
         "subpages/view_file_selector.c"
         "subpages/view_import.c"
+        "subpages/view_trash.c"
         "subpages/view_settings.c"
         "subpages/view_stats.c"
         "subpages/view_study.c"
     INCLUDE_DIRS "." "subpages"
     REQUIRES driver lvgl
-    PRIV_REQUIRES appmgr uilv controller
+    PRIV_REQUIRES appmgr uilv controller timeservice
 )

@@ -4,42 +4,36 @@
 // Display init sequences and command logic preserved VERBATIM from
 // drivers/gdem0397t81p/Display_EPD_W21.c (originally from Zephyr RTOS port).
 //
-// Low-level transport: ESP-IDF hardware SPI (mode 0, MSB first) + direct GPIO.
-//
-// Board selection (compile definition, set in the project's main/CMakeLists.txt):
-//   default                            -> boards/esp32s3/esp32s3_devkit.h
-//                                         GPIO 11=MOSI, 12=SCK, 15=CS, 6=DC, 7=RST, 8=BUSY
-//   -DEPD_BOARD_HELTEC_WIRELESS_STICK_V3 -> boards/heltec_wireless_stick_v3/heltec_wireless_stick_v3.h
-//                                         GPIO 35=MOSI, 36=SCK, 34=CS, 6=DC, 7=RST, 3=BUSY
+// Low-level transport: ESP-IDF hardware SPI (mode 0, MSB first).
+// DeepStoa v1 routes MOSI/SCK/CS/BUSY directly to the ESP32-S3, while
+// DC/RESET/POWER are driven by the AW9523 I/O expander.
 // SPI clock can be overridden with -DEPD_SPI_CLOCK_HZ=<hz> (default 10 MHz).
 
 #include <string.h>
 #include "epd_display.h"
 
-#if defined(EPD_BOARD_HELTEC_WIRELESS_STICK_V3)
-#include "heltec_wireless_stick_v3.h"
-#define EPD_PIN_MOSI    HELTEC_STICK_PIN_EPD_MOSI
-#define EPD_PIN_SCK     HELTEC_STICK_PIN_EPD_SCK
-#define EPD_PIN_CS      HELTEC_STICK_PIN_EPD_CS
-#define EPD_PIN_DC      HELTEC_STICK_PIN_EPD_DC
-#define EPD_PIN_RST     HELTEC_STICK_PIN_EPD_RST
-#define EPD_PIN_BUSY    HELTEC_STICK_PIN_EPD_BUSY
-#define EPD_SPI_HOST    HELTEC_STICK_EPD_SPI_HOST
-#define EPD_BOARD_NAME  "heltec_wireless_stick_v3"
-#else
-#include "esp32s3_devkit.h"
-#define EPD_PIN_MOSI    DEVKIT_PIN_EPD_MOSI
-#define EPD_PIN_SCK     DEVKIT_PIN_EPD_SCK
-#define EPD_PIN_CS      DEVKIT_PIN_EPD_CS
-#define EPD_PIN_DC      DEVKIT_PIN_EPD_DC
-#define EPD_PIN_RST     DEVKIT_PIN_EPD_RST
-#define EPD_PIN_BUSY    DEVKIT_PIN_EPD_BUSY
-#define EPD_SPI_HOST    DEVKIT_EPD_SPI_HOST
-#define EPD_BOARD_NAME  "esp32s3_devkit"
-#endif
+#include "deepstoa_v1.h"
+#include "aw9523.h"
+
+#define EPD_PIN_MOSI            DEEPV1_PIN_EPD_MOSI
+#define EPD_PIN_SCK             DEEPV1_PIN_EPD_SCK
+#define EPD_PIN_CS              DEEPV1_PIN_EPD_CS
+#define EPD_PIN_BUSY            DEEPV1_PIN_EPD_BUSY
+#define EPD_AW_PIN_DC           DEEPV1_AW_PIN_EPD_DC
+#define EPD_AW_PIN_RST          DEEPV1_AW_PIN_EPD_RESET
+#define EPD_AW_PIN_POWER        DEEPV1_AW_PIN_EPD_POWER
+#define EPD_RST_ACTIVE_LEVEL    0       // reset asserted low (Arduino ref)
+#define EPD_BUSY_ACTIVE_LEVEL   1       // busy while high (Arduino ref)
+#define EPD_BUSY_PULLUP         1       // MCU pull-up: keeps BUSY defined when the panel is off.
+#define EPD_SPI_HOST            DEEPV1_EPD_SPI_HOST
 
 #ifndef EPD_SPI_CLOCK_HZ
 #define EPD_SPI_CLOCK_HZ    (10 * 1000 * 1000)  // Arduino ref uses 10 MHz
+#endif
+
+// Bound BUSY waits so a panel fault cannot block the display task forever.
+#ifndef EPD_BUSY_TIMEOUT_MS
+#define EPD_BUSY_TIMEOUT_MS 10000
 #endif
 
 #include "freertos/FreeRTOS.h"
@@ -52,6 +46,7 @@ static const char *TAG = "epd_hwspi";
 
 // ─── SPI device handle ─────────────────────────────────────────────────
 static spi_device_handle_t spi_dev;
+static int s_dc_level = -1;
 
 // ─── GPIO / Delay helpers ──────────────────────────────────────────────
 
@@ -76,6 +71,12 @@ static void spi_write_bytes(const uint8_t *data, uint32_t len)
 {
     // Transmit in 4096-byte chunks via DMA for efficiency.
     // ESP-IDF SPI driver handles polling vs DMA automatically.
+    //
+    // No explicit yield here: a chunk this size goes out as an interrupt-driven
+    // DMA transfer, so spi_device_transmit() blocks on a semaphore and already
+    // lets other tasks (and the watchdog) run. The vTaskDelay(1) that used to
+    // sit at the bottom of this loop cost a full tick per chunk — 24 ticks
+    // (~240 ms at 100 Hz) for a two-plane frame, all of it idle waiting.
     uint32_t offset = 0;
     while (offset < len) {
         uint32_t chunk = (len - offset) > 4096 ? 4096 : (len - offset);
@@ -85,7 +86,14 @@ static void spi_write_bytes(const uint8_t *data, uint32_t len)
         };
         spi_device_transmit(spi_dev, &t);
         offset += chunk;
-        vTaskDelay(1);  // yield to prevent watchdog timeout
+    }
+}
+
+static void epd_set_dc(int level)
+{
+    if (s_dc_level != level) {
+        aw9523_set_pin(EPD_AW_PIN_DC, level);
+        s_dc_level = level;
     }
 }
 
@@ -93,7 +101,7 @@ static void spi_write_bytes(const uint8_t *data, uint32_t len)
 
 static void epd_write_cmd(uint8_t cmd)
 {
-    gpio_set_level(EPD_PIN_DC, 0);   // DC=0: command
+    epd_set_dc(0);                    // DC=0: command
     gpio_set_level(EPD_PIN_CS, 0);   // CS=0: assert
     spi_write_byte(cmd);
     gpio_set_level(EPD_PIN_CS, 1);   // CS=1: de-assert
@@ -101,7 +109,7 @@ static void epd_write_cmd(uint8_t cmd)
 
 static void epd_write_data(uint8_t data)
 {
-    gpio_set_level(EPD_PIN_DC, 1);   // DC=1: data
+    epd_set_dc(1);                    // DC=1: data
     gpio_set_level(EPD_PIN_CS, 0);   // CS=0: assert
     spi_write_byte(data);
     gpio_set_level(EPD_PIN_CS, 1);   // CS=1: de-assert
@@ -109,7 +117,7 @@ static void epd_write_data(uint8_t data)
 
 static void epd_write_data_pkg(const uint8_t *data, uint32_t len)
 {
-    gpio_set_level(EPD_PIN_DC, 1);   // DC=1: data
+    epd_set_dc(1);                    // DC=1: data
     gpio_set_level(EPD_PIN_CS, 0);   // CS=0: assert
     spi_write_bytes(data, len);
     gpio_set_level(EPD_PIN_CS, 1);   // CS=1: de-assert
@@ -119,14 +127,15 @@ static void epd_write_data_pkg(const uint8_t *data, uint32_t len)
 
 void epd_gpio_config(void)
 {
-    ESP_LOGI(TAG, "Configuring GPIO and SPI for GDEM0397T81P (board=%s, MOSI=%d SCK=%d CS=%d DC=%d RST=%d BUSY=%d, %d Hz)",
-             EPD_BOARD_NAME, EPD_PIN_MOSI, EPD_PIN_SCK, EPD_PIN_CS, EPD_PIN_DC, EPD_PIN_RST, EPD_PIN_BUSY, EPD_SPI_CLOCK_HZ);
+    ESP_ERROR_CHECK(aw9523_init(DEEPV1_I2C_PORT,
+                                DEEPV1_PIN_I2C_SDA,
+                                DEEPV1_PIN_I2C_SCL,
+                                DEEPV1_PIN_IO_RESET,
+                                DEEPV1_AW9523_ADDR));
 
-    // Configure control pins as outputs
+    // CS is the only display control output connected directly to the MCU.
     gpio_config_t io_conf = {
-        .pin_bit_mask = (1ULL << EPD_PIN_CS) |
-                        (1ULL << EPD_PIN_DC) |
-                        (1ULL << EPD_PIN_RST),
+        .pin_bit_mask = (1ULL << EPD_PIN_CS),
         .mode = GPIO_MODE_OUTPUT,
         .pull_up_en = GPIO_PULLUP_DISABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
@@ -134,20 +143,24 @@ void epd_gpio_config(void)
     };
     gpio_config(&io_conf);
 
-    // Configure BUSY pin as input
+    // Configure BUSY pin as input (pull-up per board definition)
     gpio_config_t busy_conf = {
         .pin_bit_mask = (1ULL << EPD_PIN_BUSY),
         .mode = GPIO_MODE_INPUT,
-        .pull_up_en = GPIO_PULLUP_ENABLE,
+        .pull_up_en = EPD_BUSY_PULLUP ? GPIO_PULLUP_ENABLE : GPIO_PULLUP_DISABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
         .intr_type = GPIO_INTR_DISABLE,
     };
     gpio_config(&busy_conf);
 
     // Initial pin states
-    gpio_set_level(EPD_PIN_CS, 1);   // CS inactive
-    gpio_set_level(EPD_PIN_DC, 0);
-    gpio_set_level(EPD_PIN_RST, 1);
+    gpio_set_level(EPD_PIN_CS, 1);               // CS inactive
+    aw9523_set_pin(EPD_AW_PIN_DC, 0);            // command mode
+    s_dc_level = 0;
+    aw9523_set_pin(EPD_AW_PIN_RST, EPD_RST_ACTIVE_LEVEL);
+    aw9523_set_pin(EPD_AW_PIN_POWER, 1);         // panel power on
+    delay_xms(10);
+    aw9523_set_pin(EPD_AW_PIN_RST, !EPD_RST_ACTIVE_LEVEL);
 
     // Configure SPI bus
     spi_bus_config_t bus_cfg = {
@@ -170,44 +183,27 @@ void epd_gpio_config(void)
     };
     ESP_ERROR_CHECK(spi_bus_add_device(EPD_SPI_HOST, &dev_cfg, &spi_dev));
 
-    ESP_LOGI(TAG, "GPIO + SPI config done");
+    ESP_LOGI(TAG, "GDEM0397T81P initialized (SPI %d Hz)", EPD_SPI_CLOCK_HZ);
 }
 
 // ─── Busy / Status ─────────────────────────────────────────────────────
 
 bool epd_is_busy(void)
 {
-    return (gpio_get_level(EPD_PIN_BUSY) == 1);
+    return (gpio_get_level(EPD_PIN_BUSY) == EPD_BUSY_ACTIVE_LEVEL);
 }
 
 static void epd_read_busy(void)
 {
-    const TickType_t start = xTaskGetTickCount();
-    const TickType_t timeout = pdMS_TO_TICKS(60000);
-    uint32_t samples = 0;
+    int waited_ms = 0;
 
-    ESP_LOGI(TAG, "Waiting for BUSY GPIO%d to go low (level=%d)",
-             EPD_PIN_BUSY, gpio_get_level(EPD_PIN_BUSY));
-    while (1) {
-        int level = gpio_get_level(EPD_PIN_BUSY);
-        if (level == 0) {
-            ESP_LOGI(TAG, "BUSY released after %lu ms",
-                     (unsigned long)pdTICKS_TO_MS(xTaskGetTickCount() - start));
-            break;
+    while (epd_is_busy()) {
+        if (waited_ms >= EPD_BUSY_TIMEOUT_MS) {
+            ESP_LOGE(TAG, "BUSY timeout after %d ms", waited_ms);
+            return;
         }
-
-        if ((++samples % 100U) == 0U) {
-            ESP_LOGW(TAG, "BUSY still high after %lu ms (GPIO%d)",
-                     (unsigned long)pdTICKS_TO_MS(xTaskGetTickCount() - start),
-                     EPD_PIN_BUSY);
-        }
-
-        if ((xTaskGetTickCount() - start) >= timeout) {
-            ESP_LOGE(TAG, "BUSY timeout after 60s; check panel power, BUSY polarity, and pin mapping");
-            break;
-        }
-
         delay_xms(10);
+        waited_ms += 10;
     }
 }
 
@@ -215,9 +211,9 @@ static void epd_read_busy(void)
 
 static void epd_reset(void)
 {
-    gpio_set_level(EPD_PIN_RST, 0);
+    aw9523_set_pin(EPD_AW_PIN_RST, EPD_RST_ACTIVE_LEVEL);  // assert reset
     delay_xms(10);
-    gpio_set_level(EPD_PIN_RST, 1);
+    aw9523_set_pin(EPD_AW_PIN_RST, !EPD_RST_ACTIVE_LEVEL); // release reset
     delay_xms(10);
 }
 
@@ -491,18 +487,28 @@ void EPD_WhiteScreen_ALL(const unsigned char *datas)
 }
 
 // Fast update display
+//
+// Both planes go out through epd_write_data_pkg() (DMA, 4096-byte bursts).
+// The byte sequence on the wire is identical to the original per-byte loop;
+// only the batching changed. That loop cost ~20 us of driver overhead per
+// byte — 96000 transactions ≈ 1.9 s, dwarfing the 1.5 s panel waveform.
 void EPD_WhiteScreen_ALL_Fast(const unsigned char *datas)
 {
-    unsigned int i;
+    // 0x26 (the "old" plane) is a constant 0xff. Send it from one reusable
+    // block instead of allocating a second EPD_ARRAY-sized buffer.
+    static uint8_t white_chunk[4096];
+    memset(white_chunk, 0xff, sizeof(white_chunk));
+
     epd_write_cmd(0x24);
-    for (i = 0; i < EPD_ARRAY; i++) {
-        epd_write_data(datas[i]);
-    }
+    epd_write_data_pkg(datas, EPD_ARRAY);
 
     epd_write_cmd(0x26);
-    for (i = 0; i < EPD_ARRAY; i++) {
-        epd_write_data(0xff);
+    for (uint32_t sent = 0; sent < EPD_ARRAY; sent += sizeof(white_chunk)) {
+        uint32_t remaining = EPD_ARRAY - sent;
+        epd_write_data_pkg(white_chunk,
+                           remaining > sizeof(white_chunk) ? sizeof(white_chunk) : remaining);
     }
+
     EPD_Update_Fast();
 }
 
@@ -609,6 +615,41 @@ void EPD_Dis_PartAll(const unsigned char *datas)
 
     epd_write_data_pkg(datas, PART_COLUMN * PART_LINE / 8);
     EPD_Part_Update();
+}
+
+// Full-screen partial update without waiting for BUSY. Used by LVGL so the
+// caller can continue scheduling work and wait before the next transfer.
+void EPD_Dis_PartAll_Async(const unsigned char *datas)
+{
+    epd_write_cmd(0x44);
+    epd_write_data(0x00);
+    epd_write_data(0x00);
+    epd_write_data((EPD_HEIGHT - 1) % 256);
+    epd_write_data((EPD_HEIGHT - 1) / 256);
+
+    epd_write_cmd(0x45);
+    epd_write_data(0x00);
+    epd_write_data(0x00);
+    epd_write_data((EPD_WIDTH - 1) % 256);
+    epd_write_data((EPD_WIDTH - 1) / 256);
+
+    epd_write_cmd(0x4E);
+    epd_write_data(0x00);
+    epd_write_data(0x00);
+    epd_write_cmd(0x4F);
+    epd_write_data(0x00);
+    epd_write_data(0x00);
+
+    epd_write_cmd(0x18);
+    epd_write_data(0x80);
+    epd_write_cmd(0x3C);
+    epd_write_data(0x80);
+    epd_write_cmd(0x24);
+    epd_write_data_pkg(datas, EPD_ARRAY);
+
+    epd_write_cmd(0x22);
+    epd_write_data(0xFF);
+    epd_write_cmd(0x20);
 }
 
 // Deep sleep

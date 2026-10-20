@@ -5,6 +5,7 @@
 
 #include <string.h>
 #include <stdio.h>
+#include <time.h>
 #include <lvgl.h>
 #include "lv_ui_style_guide.h"
 #include "esp_log.h"
@@ -19,8 +20,50 @@
 #include "settings_controller.h"
 #include "flash_control.h"
 #include "ota.h"
+#include "time_service.h"
+#include "lv_num_input.h"
 
 static const char *TAG = "settings_general";
+
+typedef struct {
+    lv_obj_t *year;
+    lv_obj_t *month;
+    lv_obj_t *day;
+    lv_obj_t *hour;
+    lv_obj_t *minute;
+    lv_obj_t *status;
+} ManualTimeCtx;
+
+static void manual_time_ctx_delete_cb(lv_event_t *e)
+{
+    lv_free(lv_event_get_user_data(e));
+}
+
+static void set_manual_time_cb(lv_event_t *e)
+{
+    ManualTimeCtx *ctx = lv_event_get_user_data(e);
+    if (!ctx) return;
+    bool ok = settings_controller_set_manual_datetime(
+        lv_num_input_get_value(ctx->year),
+        lv_num_input_get_value(ctx->month),
+        lv_num_input_get_value(ctx->day),
+        lv_num_input_get_value(ctx->hour),
+        lv_num_input_get_value(ctx->minute));
+    lv_label_set_text(ctx->status, ok
+        ? "Time verified. Scheduling and recycle cleanup are enabled."
+        : "Could not save this time. Check the date and saved study time.");
+}
+
+static lv_obj_t *manual_time_input(lv_obj_t *parent, const char *title,
+                                   int value, int minimum, int maximum)
+{
+    lv_obj_t *input = lv_number_input_create(parent, title, value, 1, NULL);
+    if (input) {
+        lv_num_input_set_range(input, minimum, maximum);
+        lv_obj_set_width(input, LV_PCT(100));
+    }
+    return input;
+}
 
 // ── Timezone option string builder ─────────────────────────────────────
 
@@ -211,11 +254,6 @@ static void on_folder_selected(const fs_selection_t *selection, void *user_data)
     if (selection && selection->count > 0) {
         SettingsApp *app = (SettingsApp *)nav->app_handler;
         settings_controller_set_wallpaper_folder(app, selection->paths[0]);
-
-        /* mock 树里的路径存下来也没意义，提示一下免得用户以为设好了 */
-        if (folder_selector_using_mock()) {
-            lv_toast_show("No filesystem mounted - mock path saved", 2000);
-        }
     }
 
     /* 回到 Wallpaper 页。那一页会重新构建，直接显示 model 里的新路径。 */
@@ -223,10 +261,6 @@ static void on_folder_selected(const fs_selection_t *selection, void *user_data)
 }
 
 static lv_obj_t *build_folder_selector_page(struct SettingsApp *app) {
-    if (folder_selector_using_mock()) {
-        ESP_LOGW(TAG, "No filesystem mounted at %s - listing built-in mock tree", FSEL_ROOT);
-    }
-
     /* 选目录不是选文件，所以是 SINGLE_DIR；目录不受后缀过滤影响，用不过滤的版本。
      * 已经设过就从那个目录开始，省得每次从根目录点起。 */
     const char *start = app->model->wallpaper.wallpaper_folder[0] != '\0'
@@ -391,6 +425,55 @@ static lv_obj_t *build_datetime_page(struct SettingsApp *app) {
     lv_dropdown_set_selected(tz_dd, sel);
     lv_obj_add_event_cb(tz_dd, settings_controller_set_timezone,
                         LV_EVENT_VALUE_CHANGED, app);
+
+    lv_obj_t *manual_title = lv_label_create(cont);
+    lv_label_set_text(manual_title, "Manual Date & Time");
+    lv_obj_set_style_margin_top(manual_title, 20, 0);
+
+    ManualTimeCtx *ctx = lv_malloc(sizeof(*ctx));
+    if (!ctx) return page.screen;
+    memset(ctx, 0, sizeof(*ctx));
+    lv_obj_add_event_cb(page.screen, manual_time_ctx_delete_cb,
+                        LV_EVENT_DELETE, ctx);
+
+    uint32_t epoch = 0;
+    struct tm local = {
+        .tm_year = 124,
+        .tm_mon = 0,
+        .tm_mday = 1,
+    };
+    if (time_service_now(&epoch)) {
+        time_t current = (time_t)epoch;
+        localtime_r(&current, &local);
+    }
+    ctx->year = manual_time_input(cont, "Year", local.tm_year + 1900,
+                                  2024, 2105);
+    ctx->month = manual_time_input(cont, "Month", local.tm_mon + 1, 1, 12);
+    ctx->day = manual_time_input(cont, "Day", local.tm_mday, 1, 31);
+    ctx->hour = manual_time_input(cont, "Hour", local.tm_hour, 0, 23);
+    ctx->minute = manual_time_input(cont, "Minute", local.tm_min, 0, 59);
+
+    ctx->status = lv_label_create(cont);
+    lv_obj_set_width(ctx->status, LV_PCT(100));
+    lv_label_set_long_mode(ctx->status, LV_LABEL_LONG_WRAP);
+    time_service_state_t state = time_service_get_state();
+    lv_label_set_text(ctx->status,
+        time_service_has_conflict()
+            ? "Network time is earlier than saved study time. Scheduling stays conservative and recycle cleanup remains paused."
+            : state == TIME_STATE_TRUSTED
+            ? "Time verified."
+            : state == TIME_STATE_ESTIMATED
+                ? "Using an offline estimate. Automatic recycle cleanup is paused."
+                : "Time is unknown. Set it before studying.");
+
+    lv_obj_t *set_btn = lv_button_create(cont);
+    ui_style_set_btn_primary(set_btn);
+    lv_obj_set_width(set_btn, LV_PCT(100));
+    ui_style_set_btn_size_large(set_btn);
+    lv_obj_t *set_label = lv_label_create(set_btn);
+    lv_label_set_text(set_label, "Set Date & Time");
+    lv_obj_center(set_label);
+    lv_obj_add_event_cb(set_btn, set_manual_time_cb, LV_EVENT_CLICKED, ctx);
 
     return page.screen;
 }

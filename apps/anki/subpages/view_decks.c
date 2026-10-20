@@ -3,12 +3,14 @@
 #include "esp_log.h"
 #include <lvgl.h>
 #include "lv_ui_style_guide.h"
+#include "lv_toast.h"
 
 #include "view_decks.h"
 #include "controller_decks.h"
 #include "../view.h"
 #include "../app.h"
 #include "../model.h"
+#include "../trash.h"
 
 static const char *TAG = "anki_view_decks";
 
@@ -45,17 +47,26 @@ static void global_menu_settings_cb(lv_event_t * e) {
     PAGE_NAVIGATE_TO(app, PAGE_SETTINGS, NULL);
 }
 
+static void global_menu_trash_cb(lv_event_t * e) {
+    AnkiApp *app = lv_event_get_user_data(e);
+    app->model->target_deck_idx = -1;
+    PAGE_NAVIGATE_TO(app, PAGE_TRASH, NULL);
+}
+
 static void open_global_menu_sheet_event_cb(lv_event_t * e) {
     AnkiApp * app = lv_event_get_user_data(e);
     
     lv_bottom_sheet_t* sheet = lv_bottom_sheet_create(NULL);
+    if (!sheet) return;
 
     lv_obj_t * content = lv_bottom_sheet_get_content(sheet);
     lv_obj_set_style_pad_all(content, 0, LV_PART_MAIN);
     lv_obj_set_flex_flow(content, LV_FLEX_FLOW_COLUMN);
     
-    const char* nav_labels[] = {"Statistic", "Settings", "Cancel"};
-    void (*callbacks[])(lv_event_t *) = {global_menu_stats_cb, global_menu_settings_cb, NULL};
+    const char* nav_labels[] = {"Statistic", "Settings", "Recycle Bin", "Cancel"};
+    void (*callbacks[])(lv_event_t *) = {
+        global_menu_stats_cb, global_menu_settings_cb, global_menu_trash_cb, NULL
+    };
 
     app->model->target_deck_idx = -1;
     
@@ -176,12 +187,12 @@ static void deck_more_sheet_cb(lv_event_t * e) {
     int option_count;
 
     // 2. 提前定义好两种菜单的静态数组
-    static char* labels_normal[] = {"Edit name", "Import cards", "Add subdeck", "Statistics", "Delete", "Cancel"};
+    static char* labels_normal[] = {"Edit name", "Import cards", "Add subdeck", "Statistics", "Remove Deck", "Cancel"};
     static void (*callbacks_normal[])(lv_event_t *) = {
         more_edit_cb, more_import_cb, more_add_sub_cb, more_stats_cb, more_delete_cb, NULL
     };
 
-    static char* labels_deep[] = {"Edit name", "Import cards", "Statistics", "Delete", "Cancel"};
+    static char* labels_deep[] = {"Edit name", "Import cards", "Statistics", "Remove Deck", "Cancel"};
     static void (*callbacks_deep[])(lv_event_t *) = {
         more_edit_cb, more_import_cb, more_stats_cb, more_delete_cb, NULL
     };
@@ -246,6 +257,7 @@ static void deck_row_click_cb(lv_event_t * e) {
     app->model->active_deck_idx = deck_idx;
     app->model->active_card_idx = 0;
     app->model->is_showing_answer = false;
+    anki_model_begin_study(app->model);
 
     // 获取子树聚合卡片总数，若 > 0 则允许进入学习；否则弹提示
     int tree_cards = app->model->decks[deck_idx].total_cards_count;
@@ -279,18 +291,39 @@ static void delete_deck_confirm_cb(lv_event_t * e) {
     if(sheet && app) {
         int deck_idx = (int)(intptr_t)lv_obj_get_user_data(lv_event_get_current_target(e));
 
-        anki_model_delete_deck(app->model, deck_idx);
-        ESP_LOGI(TAG, "Confirmed deleting deck idx: %d", deck_idx);
+        if (!anki_trash_recycle_deck(app->model, deck_idx)) {
+            lv_toast_show("Could not move deck to Recycle Bin", 2500);
+            return;
+        }
+        ESP_LOGI(TAG, "Moved deck idx %d to Recycle Bin", deck_idx);
 
         lv_bottom_sheet_close(sheet);
+        lv_toast_show("Moved to Recycle Bin", 1800);
         // 删除后局部刷新列表
         lv_async_call((lv_async_cb_t)view_decks_refresh_list, app);
     }
 }
 
+static void delete_deck_permanently_cb(lv_event_t * e) {
+    lv_bottom_sheet_t *sheet = (lv_bottom_sheet_t *)lv_event_get_user_data(e);
+    AnkiApp *app = &g_anki_app;
+    if (!sheet || !app) return;
+
+    int deck_idx = (int)(intptr_t)lv_obj_get_user_data(lv_event_get_current_target(e));
+    if (!anki_trash_delete_active_permanently(app->model, deck_idx)) {
+        lv_toast_show("Permanent deletion failed", 2500);
+        return;
+    }
+
+    lv_bottom_sheet_close(sheet);
+    lv_toast_show("Permanently deleted", 1800);
+    lv_async_call((lv_async_cb_t)view_decks_refresh_list, app);
+}
+
 static void view_decks_show_delete_dialog(AnkiApp *app, int deck_idx) {
     lv_bottom_sheet_t * sheet = lv_bottom_sheet_create(NULL);
-    lv_bottom_sheet_add_header(sheet, "Delete deck");
+    if (!sheet) return;
+    lv_bottom_sheet_add_header(sheet, "Remove Deck");
 
     lv_obj_t * content = lv_bottom_sheet_get_content(sheet);
     lv_obj_set_flex_flow(content, LV_FLEX_FLOW_COLUMN);
@@ -299,40 +332,52 @@ static void view_decks_show_delete_dialog(AnkiApp *app, int deck_idx) {
 
     // 提示文案：与之前 msgbox 一致
     AnkiDeck *deck = &app->model->decks[deck_idx];
-    char msg_buf[128];
-    snprintf(msg_buf, sizeof(msg_buf), "Delete '%s' and all its cards?", deck->name);
+    char msg_buf[192];
+    snprintf(msg_buf, sizeof(msg_buf),
+             "Remove '%s'? Recycle Bin keeps the card file and study history for 30 days.",
+             deck->name);
 
     lv_obj_t * msg = lv_label_create(content);
     lv_label_set_text(msg, msg_buf);
     lv_label_set_long_mode(msg, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(msg, LV_PCT(100));
 
-    // 按钮行：左右布局（参考 ExitApp）
+    // Destructive choices are stacked so their meaning remains readable.
     lv_obj_t *btn_row = lv_obj_create(content);
     lv_obj_remove_style_all(btn_row);
     lv_obj_set_width(btn_row, LV_PCT(100));
     lv_obj_set_height(btn_row, LV_SIZE_CONTENT);
-    lv_obj_set_flex_flow(btn_row, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(btn_row, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_flex_flow(btn_row, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(btn_row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_gap(btn_row, 10, 0);
 
-    // Cancel（secondary）
+    // Move to Recycle Bin (recommended)
+    lv_obj_t *btn_del = lv_button_create(btn_row);
+    lv_obj_set_size(btn_del, LV_PCT(100), 48);
+    lv_obj_add_event_cb(btn_del, delete_deck_confirm_cb, LV_EVENT_CLICKED, sheet);
+    lv_obj_t *lbl_del = lv_label_create(btn_del);
+    lv_label_set_text(lbl_del, "Move to Recycle Bin");
+    lv_obj_center(lbl_del);
+    ui_style_set_btn_primary(btn_del);
+    lv_obj_set_user_data(btn_del, (void *)(intptr_t)deck_idx);
+
+    lv_obj_t *btn_permanent = lv_button_create(btn_row);
+    lv_obj_set_size(btn_permanent, LV_PCT(100), 48);
+    lv_obj_add_event_cb(btn_permanent, delete_deck_permanently_cb,
+                        LV_EVENT_CLICKED, sheet);
+    lv_obj_t *lbl_permanent = lv_label_create(btn_permanent);
+    lv_label_set_text(lbl_permanent, "Delete Permanently");
+    lv_obj_center(lbl_permanent);
+    ui_style_set_btn_secondary(btn_permanent);
+    lv_obj_set_user_data(btn_permanent, (void *)(intptr_t)deck_idx);
+
     lv_obj_t *btn_cancel = lv_button_create(btn_row);
-    lv_obj_set_size(btn_cancel, 120, 48);
+    lv_obj_set_size(btn_cancel, LV_PCT(100), 48);
     lv_obj_add_event_cb(btn_cancel, close_sheet_wrapper_cb, LV_EVENT_CLICKED, sheet);
     lv_obj_t *lbl_cancel = lv_label_create(btn_cancel);
     lv_label_set_text(lbl_cancel, "Cancel");
     lv_obj_center(lbl_cancel);
     ui_style_set_btn_secondary(btn_cancel);
-
-    // Delete（primary，携带 deck_idx 供确认回调读取）
-    lv_obj_t *btn_del = lv_button_create(btn_row);
-    lv_obj_set_size(btn_del, 120, 48);
-    lv_obj_add_event_cb(btn_del, delete_deck_confirm_cb, LV_EVENT_CLICKED, sheet);
-    lv_obj_t *lbl_del = lv_label_create(btn_del);
-    lv_label_set_text(lbl_del, "Delete");
-    lv_obj_center(lbl_del);
-    ui_style_set_btn_primary(btn_del);
-    lv_obj_set_user_data(btn_del, (void *)(intptr_t)deck_idx);
 }
 
 // ==========================================
@@ -340,6 +385,7 @@ static void view_decks_show_delete_dialog(AnkiApp *app, int deck_idx) {
 // ==========================================
 static void view_decks_show_empty_prompt(AnkiApp *app, int deck_idx) {
     lv_bottom_sheet_t * sheet = lv_bottom_sheet_create(NULL);
+    if (!sheet) return;
     lv_bottom_sheet_add_header(sheet, "No cards");
 
     lv_obj_t * content = lv_bottom_sheet_get_content(sheet);
@@ -415,8 +461,10 @@ static lv_obj_t * view_create_deck_row(lv_obj_t *parent, AnkiDeck *deck, int dec
     
     // 卡片数量信息：x/y (包含所有子牌组的聚合统计)
     char cards_info[16];
-    uint16_t unlearned = deck->new_cards_count + deck->due_cards_count;
-    snprintf(cards_info, sizeof(cards_info), "%d/%d", unlearned, deck->total_cards_count);
+    uint32_t unlearned = (uint32_t)deck->new_cards_count +
+                         deck->due_cards_count;
+    snprintf(cards_info, sizeof(cards_info), "%u/%u", (unsigned)unlearned,
+             (unsigned)deck->total_cards_count);
     lv_obj_t * cards_label = lv_label_create(row);
     lv_label_set_text(cards_label, cards_info);
     lv_obj_set_style_text_align(cards_label, LV_TEXT_ALIGN_RIGHT, 0);
@@ -440,6 +488,15 @@ static void view_decks_refresh_list(AnkiApp *app) {
     // 增加一层有效性保护
     if (ctx->deck_list_cont && lv_obj_is_valid(ctx->deck_list_cont)) {
         lv_obj_clean(ctx->deck_list_cont);
+        if (app->model->storage_fault) {
+            lv_obj_t *error = lv_label_create(ctx->deck_list_cont);
+            lv_obj_set_width(error, LV_PCT(100));
+            lv_label_set_long_mode(error, LV_LABEL_LONG_WRAP);
+            lv_label_set_text(error,
+                "Card database is damaged or unavailable. Restart the device; "
+                "if the problem remains, reset Anki data.");
+            return;
+        }
         for (int i = 0; i < app->model->deck_count; i++) {
             AnkiDeck *deck = &app->model->decks[i];
             view_create_deck_row(ctx->deck_list_cont, deck, i, app);
@@ -456,8 +513,14 @@ static lv_obj_t* build_decks_page(AnkiApp* app, void* user_data) {
     // 申请上下文
     if (app->view->page_nav.nav_ctx != NULL) {
         free(app->view->page_nav.nav_ctx);
+        app->view->page_nav.nav_ctx = NULL;
     }
     AnkiViewDecksCtx* decks_ctx = malloc(sizeof(AnkiViewDecksCtx));
+    if (!decks_ctx) {
+        lv_obj_t *error = lv_label_create(page.container);
+        lv_label_set_text(error, "Not enough memory to show decks");
+        return page.screen;
+    }
     memset(decks_ctx, 0, sizeof(AnkiViewDecksCtx));
     app->view->page_nav.nav_ctx = decks_ctx;
 
@@ -505,6 +568,9 @@ static lv_obj_t* build_decks_page(AnkiApp* app, void* user_data) {
     lv_obj_center(add_lbl);
     
     lv_obj_add_event_cb(add_btn, deck_add_root_cb, LV_EVENT_CLICKED, app);
+    if (app->model->storage_fault) {
+        lv_obj_add_flag(add_btn, LV_OBJ_FLAG_HIDDEN);
+    }
 
     return page.screen;
 }

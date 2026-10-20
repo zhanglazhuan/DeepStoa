@@ -42,6 +42,8 @@ void settings_controller_set_wallpaper_order(lv_event_t *e);
 void settings_controller_set_date_type(lv_event_t *e);
 void settings_controller_set_hour_24(lv_event_t *e);
 void settings_controller_set_timezone(lv_event_t *e);
+bool settings_controller_set_manual_datetime(int year, int month, int day,
+                                             int hour, int minute);
 void settings_controller_on_general_exit(lv_event_t *e);
 
 // ── Update (OTA) handlers ──────────────────────────────────────────────

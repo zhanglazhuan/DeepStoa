@@ -1,32 +1,51 @@
-#include <string.h>
-#include <sys/stat.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "driver/sdmmc_host.h"
 #include "esp_log.h"
 #include "esp_vfs_fat.h"
+#include "sdmmc_cmd.h"
 
+#include "aw9523.h"
+#include "deepstoa_v1.h"
 #include "fs_control.h"
 
 static const char *TAG = "fs_control";
 
-static wl_handle_t s_wl = WL_INVALID_HANDLE;
+static sdmmc_card_t *s_card;
 static bool        s_mounted;
 
 esp_err_t fs_control_init(void)
 {
     if (s_mounted) return ESP_OK;
 
+    /* The SD socket shares the board peripheral power rail. */
+    aw9523_set_pin(DEEPV1_AW_PIN_EN_POWER, 1);
+    vTaskDelay(pdMS_TO_TICKS(100));
+
+    sdmmc_host_t host = SDMMC_HOST_DEFAULT();
+    host.flags = SDMMC_HOST_FLAG_4BIT;
+
+    sdmmc_slot_config_t slot = SDMMC_SLOT_CONFIG_DEFAULT();
+    slot.clk = DEEPV1_PIN_SD_CLK;
+    slot.cmd = DEEPV1_PIN_SD_CMD;
+    slot.d0 = DEEPV1_PIN_SD_DAT0;
+    slot.d1 = DEEPV1_PIN_SD_DAT1;
+    slot.d2 = DEEPV1_PIN_SD_DAT2;
+    slot.d3 = DEEPV1_PIN_SD_DAT3;
+    slot.width = 4;
+
     const esp_vfs_fat_mount_config_t cfg = {
-        /* 镜像是构建时生成好的，正常不该走到格式化这一步。
-         * 但如果分区被挪过/擦过，允许自动格式化，免得设备直接不可用。 */
-        .format_if_mount_failed = true,
-        .max_files              = 4,
-        .allocation_unit_size   = CONFIG_WL_SECTOR_SIZE,
+        .format_if_mount_failed = false,
+        .max_files = 5,
+        .allocation_unit_size = 16 * 1024,
     };
 
-    esp_err_t err = esp_vfs_fat_spiflash_mount_rw_wl(FS_MOUNT_POINT,
-                                                     FS_PARTITION_LABEL,
-                                                     &cfg, &s_wl);
+    esp_err_t err = esp_vfs_fat_sdmmc_mount(FS_MOUNT_POINT, &host, &slot,
+                                             &cfg, &s_card);
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "mount %s failed: %s", FS_MOUNT_POINT, esp_err_to_name(err));
+        ESP_LOGE(TAG, "SD mount at %s failed: %s", FS_MOUNT_POINT,
+                 esp_err_to_name(err));
+        s_card = NULL;
         return err;
     }
 
@@ -34,24 +53,16 @@ esp_err_t fs_control_init(void)
 
     uint64_t total = 0, used = 0;
     fs_control_get_usage(&total, &used);
-    ESP_LOGI(TAG, "mounted %s (%llu/%llu KB used)",
+    ESP_LOGI(TAG, "SD mounted at %s (%llu/%llu KB used)",
              FS_MOUNT_POINT, used / 1024, total / 1024);
-
-    /* 曲目目录不存在就建一个，省得列表页一上来就是"目录不存在" */
-    struct stat st;
-    if (stat(FS_MOUNT_POINT "/music", &st) != 0) {
-        if (mkdir(FS_MOUNT_POINT "/music", 0777) == 0) {
-            ESP_LOGI(TAG, "created " FS_MOUNT_POINT "/music");
-        }
-    }
     return ESP_OK;
 }
 
 void fs_control_deinit(void)
 {
     if (!s_mounted) return;
-    esp_vfs_fat_spiflash_unmount_rw_wl(FS_MOUNT_POINT, s_wl);
-    s_wl = WL_INVALID_HANDLE;
+    esp_vfs_fat_sdcard_unmount(FS_MOUNT_POINT, s_card);
+    s_card = NULL;
     s_mounted = false;
 }
 

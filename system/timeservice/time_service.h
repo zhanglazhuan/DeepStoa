@@ -1,7 +1,7 @@
 /*
  * DeepStoa —— 系统时间服务
  *
- * 由 RTC + SNTP 维护的墙上时间。开机加载持久化的时区/格式，联网后自动对时。
+ * 由持久化时间锚点、开机单调时钟和 SNTP 维护的墙上时间。
  * 每分钟通过 app_event 广播一次 APP_EVENT_CLOCK_TICK，监听方调
  * app_event_register() 订阅 —— 不另设回调 API。
  *
@@ -23,6 +23,12 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+typedef enum {
+    TIME_STATE_INVALID = 0,
+    TIME_STATE_ESTIMATED,
+    TIME_STATE_TRUSTED,
+} time_service_state_t;
 
 /* ── 生命周期 ───────────────────────────────────────────────────────────── */
 
@@ -50,8 +56,29 @@ int  time_service_get_hour(void);     /* 已按 12/24h 设置换算 */
 int  time_service_get_minute(void);
 int  time_service_get_second(void);
 
-/** 是否已经和 SNTP 对上时。没对上时不要把时间当真 —— 闹钟应拒绝触发。 */
+/** 本次开机是否已有 SNTP 或用户手动确认的可信时间。 */
 bool time_service_is_synced(void);
+
+/** Current confidence of the wall clock. */
+time_service_state_t time_service_get_state(void);
+
+/** True when a trusted source attempted to move behind persisted study time. */
+bool time_service_has_conflict(void);
+
+/**
+ * Return a non-decreasing epoch used by applications. INVALID returns false.
+ * ESTIMATED advances from the last persisted safe time using boot uptime.
+ */
+bool time_service_now(uint32_t *epoch);
+
+/** Monotonic milliseconds since boot, suitable for elapsed-duration limits. */
+uint64_t time_service_monotonic_ms(void);
+
+/** Persist a time already used in durable application data. */
+void time_service_checkpoint(uint32_t epoch);
+
+/** Set a user-confirmed local date/time epoch and mark this boot trusted. */
+bool time_service_set_manual(uint32_t epoch);
 
 /* ── SNTP ───────────────────────────────────────────────────────────────── */
 

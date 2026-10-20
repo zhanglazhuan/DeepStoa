@@ -10,6 +10,8 @@ extern "C" {
 
 void anki_controller_on_show_answer(lv_event_t *e);
 void anki_controller_on_rate_card(lv_event_t *e);
+void anki_controller_study_format_labels(AnkiApp *app,
+                                         char labels[4][24]);
 
 #ifdef __cplusplus
 }

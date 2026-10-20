@@ -10,6 +10,7 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/semphr.h"
 
 static const char *TAG = "aw9523";
 
@@ -30,6 +31,7 @@ static const char *TAG = "aw9523";
 
 static i2c_master_bus_handle_t g_i2c_bus = NULL;
 static i2c_master_dev_handle_t g_i2c_dev = NULL;
+static SemaphoreHandle_t g_output_lock;
 static uint8_t g_out_cache[2];  // P0, P1 output register cache
 static uint8_t g_dir_cache[2];  // P0, P1 direction register cache
 
@@ -57,6 +59,10 @@ static esp_err_t aw9523_update_reg(uint8_t reg, uint8_t mask, uint8_t value)
 esp_err_t aw9523_init(uint8_t i2c_port, gpio_num_t sda_pin, gpio_num_t scl_pin,
                       gpio_num_t rst_pin, uint8_t i2c_addr)
 {
+    if (g_i2c_bus) return ESP_ERR_INVALID_STATE;
+    if (!g_output_lock) g_output_lock = xSemaphoreCreateMutex();
+    if (!g_output_lock) return ESP_ERR_NO_MEM;
+
     // --- I2C master bus init ---
     i2c_master_bus_config_t bus_cfg = {
         .i2c_port = (i2c_port_t)i2c_port,
@@ -94,27 +100,16 @@ esp_err_t aw9523_init(uint8_t i2c_port, gpio_num_t sda_pin, gpio_num_t scl_pin,
         ESP_LOGI(TAG, "HW reset done (GPIO%d)", rst_pin);
     }
 
-    // --- I2C bus scan (all addresses) ---
-    ESP_LOGI(TAG, "Scanning I2C bus (port %d, SDA=GPIO%d, SCL=GPIO%d)...",
-             i2c_port, sda_pin, scl_pin);
-    int devices_found = 0;
-    // Scan in reverse so we check higher addresses first (some devices respond slower)
-    for (int addr = 1; addr < 127; addr++) {
-        esp_err_t probe_ret = i2c_master_probe(g_i2c_bus, addr, pdMS_TO_TICKS(20));
-        if (probe_ret == ESP_OK) {
-            ESP_LOGI(TAG, "  Device found at 0x%02X (7-bit)", addr);
-            devices_found++;
-        }
+    // i2c_master_probe() takes milliseconds, not FreeRTOS ticks.
+    ESP_LOGI(TAG, "Probing AW9523 at 0x%02X (port %d, SDA=GPIO%d, SCL=GPIO%d)...",
+             i2c_addr, i2c_port, sda_pin, scl_pin);
+    ret = i2c_master_probe(g_i2c_bus, i2c_addr, 50);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "AW9523 probe failed at 0x%02X: %s",
+                 i2c_addr, esp_err_to_name(ret));
+        return ret;
     }
-    if (devices_found == 0) {
-        ESP_LOGE(TAG, "No I2C devices found on bus! (scanned 1..126)");
-        ESP_LOGE(TAG, "Possible causes:");
-        ESP_LOGE(TAG, "  1. SDA/SCL pins swapped or wrong GPIO numbers");
-        ESP_LOGE(TAG, "  2. Pull-up resistors missing on SDA/SCL");
-        ESP_LOGE(TAG, "  3. AW9523 not powered or held in reset");
-        ESP_LOGE(TAG, "  4. I2C port conflict with another driver");
-        return ESP_ERR_TIMEOUT;
-    }
+    ESP_LOGI(TAG, "Device found at 0x%02X (7-bit)", i2c_addr);
 
     // --- Add AW9523 device to bus ---
     // Match reference: 400 kHz, no scl_wait_us, no disable_ack_check
@@ -157,25 +152,31 @@ esp_err_t aw9523_init(uint8_t i2c_port, gpio_num_t sda_pin, gpio_num_t scl_pin,
         return ret;
     }
 
-    // LED mode: 0 = GPIO mode (not LED current sink)
-    aw9523_write_reg(AW9523_REG_LEDMODE_P0, 0x00);
-    aw9523_write_reg(AW9523_REG_LEDMODE_P1, 0x00);
+    // LEDMODE bit: 0 = LED/current-sink mode, 1 = GPIO mode.
+    // Use GPIO mode for every pin; the display control lines must be
+    // ordinary push-pull GPIOs rather than LED current sinks.
+    aw9523_write_reg(AW9523_REG_LEDMODE_P0, 0xFF);
+    aw9523_write_reg(AW9523_REG_LEDMODE_P1, 0xFF);
 
-    // P0 pin directions: bit5=INT(input), others output
-    g_dir_cache[0] = (1 << 5);
-    g_out_cache[0] = 0x00;
-    aw9523_write_reg(AW9523_REG_DIR_P0, g_dir_cache[0]);
+    // Match the pre-production board schematic. Preload safe output levels while
+    // every pin is still an input, then enable only the intended outputs.
+    g_dir_cache[0] = DEEPV1_AW_P0_INPUT_MASK;
+    g_out_cache[0] = DEEPV1_AW_P0_SAFE_OUTPUT;
+    g_dir_cache[1] = DEEPV1_AW_P1_INPUT_MASK;
+    g_out_cache[1] = DEEPV1_AW_P1_SAFE_OUTPUT;
     aw9523_write_reg(AW9523_REG_OUTPUT_P0, g_out_cache[0]);
-
-    // P1 pin directions: bit6=BUSY(input), others output. CS(P1.4)=high (inactive)
-    g_dir_cache[1] = (1 << 6);
-    g_out_cache[1] = (1 << 4);
-    aw9523_write_reg(AW9523_REG_DIR_P1, g_dir_cache[1]);
     aw9523_write_reg(AW9523_REG_OUTPUT_P1, g_out_cache[1]);
+    aw9523_write_reg(AW9523_REG_DIR_P0, g_dir_cache[0]);
+    aw9523_write_reg(AW9523_REG_DIR_P1, g_dir_cache[1]);
 
     ESP_LOGI(TAG, "Initialized at addr 0x%02X (I2C port %d, 400 kHz)",
              i2c_addr, i2c_port);
     return ESP_OK;
+}
+
+void *aw9523_get_i2c_bus(void)
+{
+    return g_i2c_bus;
 }
 
 void aw9523_reset(void)
@@ -200,8 +201,11 @@ void aw9523_set_port_dir(uint8_t port, uint8_t dir)
 void aw9523_write_port(uint8_t port, uint8_t value)
 {
     if (port > 1) return;
-    g_out_cache[port] = value;
-    aw9523_write_reg(AW9523_REG_OUTPUT_P0 + port, value);
+    if (!g_output_lock) return;
+    xSemaphoreTake(g_output_lock, portMAX_DELAY);
+    if (aw9523_write_reg(AW9523_REG_OUTPUT_P0 + port, value) == ESP_OK)
+        g_out_cache[port] = value;
+    xSemaphoreGive(g_output_lock);
 }
 
 uint8_t aw9523_read_port(uint8_t port)
@@ -218,12 +222,16 @@ void aw9523_set_pin(uint8_t pin, uint8_t level)
     uint8_t bit = AW9523_GET_BIT(pin);
     if (port > 1 || bit > 7) return;
 
-    if (level) {
-        g_out_cache[port] |= (1 << bit);
-    } else {
-        g_out_cache[port] &= ~(1 << bit);
-    }
-    aw9523_write_reg(AW9523_REG_OUTPUT_P0 + port, g_out_cache[port]);
+    if (!g_output_lock) return;
+    // DC/reset and amplifier share P1: serialize the cache AND bus write.
+    xSemaphoreTake(g_output_lock, portMAX_DELAY);
+    uint8_t value = g_out_cache[port];
+    if (level) value |= (1U << bit);
+    else value &= ~(1U << bit);
+    esp_err_t err = aw9523_write_reg(AW9523_REG_OUTPUT_P0 + port, value);
+    if (err == ESP_OK) g_out_cache[port] = value;
+    else ESP_LOGE(TAG, "P%u.%u write failed: %s", port, bit, esp_err_to_name(err));
+    xSemaphoreGive(g_output_lock);
 }
 
 uint8_t aw9523_get_pin(uint8_t pin)

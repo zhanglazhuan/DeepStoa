@@ -3,13 +3,13 @@
  * @brief 语音采集抽象层 —— controller 只认这个接口，不认识 I2S
  *
  * 实现有两份，共用本头文件，由 CMakeLists 二选一编译：
- *   chatbot_audio_mock.c   当前阶段（没有麦克风电路）
- *   chatbot_audio_i2s.c    阶段 2，板子到位后补
+ *   chatbot_audio_mock.c   保留用于 UI 调试
+ *   chatbot_audio_i2s.c    ES7210 + 系统 AEC 采集服务
  *
  * ── 实现方必须遵守的三条契约 ──────────────────────────────────────────
  *
  * 1. 回调必须在 LVGL 线程被调用。
- *    真实实现跑在 I2S 任务里，回调前必须用 lv_async_call() 弹回 UI 线程。
+ *    真实实现跑在 I2S 任务里，由 LVGL 定时器派发完成回调，采集任务不能调用 LVGL。
  *    在别的线程里碰 LVGL 对象会崩，而且崩得很难查。
  *
  * 2. chatbot_audio_stop() 之后必定回调一次，成功或失败都要回。

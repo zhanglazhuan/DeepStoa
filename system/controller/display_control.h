@@ -41,30 +41,27 @@ typedef enum {
     DISPLAY_STATE_POWERED_OFF,
 } display_state_t;
 
-// ── Display context ────────────────────────────────────────────────────
+// EPD rendering state; owned privately by display_control.c.
 typedef struct {
-    uint8_t    *epd_buffer;
-    uint8_t    *epd_buffer_4g;
+    uint8_t *epd_buffer;
+    uint8_t *epd_buffer_4g;
     epd_orientation_t orientation;
-    epd_flush_mode_t  flush_mode;
-    lv_area_t  dirty_area;
-    bool       is_first_flush_in_cycle;
+    epd_flush_mode_t flush_mode;
+    lv_area_t dirty_area;
+    bool is_first_flush_in_cycle;
     display_state_t state;
-    bool       is_fast_lut_loaded;
-    bool       need_hw_sync_after_wakeup;
-    bool       need_sync_base;
-    bool       next_frame_flush_mode;
+    bool is_fast_lut_loaded;
+    bool need_hw_sync_after_wakeup;
+    bool need_sync_base;
+    bool next_frame_flush_mode;
     epd_flush_mode_t requested_flush_mode;
-    bool       transition_frame_ready;
-    bool       is_4g_lut_loaded;
-    bool       has_refresh_area;
-    lv_area_t  refresh_area;
-    uint16_t   screen_w;
-    uint16_t   screen_h;
+    bool transition_frame_ready;
+    bool is_4g_lut_loaded;
+    bool has_refresh_area;
+    lv_area_t refresh_area;
+    uint16_t screen_w;
+    uint16_t screen_h;
 } epd_context_t;
-
-extern lv_display_t *disp;
-extern epd_context_t epd_ctx;
 
 // ── API ────────────────────────────────────────────────────────────────
 void display_control_init(void);

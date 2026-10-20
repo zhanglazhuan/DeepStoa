@@ -9,13 +9,21 @@
 #include "./subpages/view_stats.h"
 #include "./subpages/view_import.h"
 #include "./subpages/view_file_selector.h"
+#include "./subpages/view_trash.h"
 #include "./subpages/view_deck_form.h"
 
-void anki_view_init(AnkiApp *app) {
+bool anki_view_init(AnkiApp *app) {
+    if (!app) return false;
     app->view = malloc(sizeof(AnkiView));
+    if (!app->view) return false;
     memset(app->view, 0, sizeof(AnkiView));
 
     page_navigator_page_t *registry = malloc(sizeof(page_navigator_page_t) * ANKI_PAGE_ID_MAX);
+    if (!registry) {
+        free(app->view);
+        app->view = NULL;
+        return false;
+    }
     memset(registry, 0, sizeof(page_navigator_page_t) * ANKI_PAGE_ID_MAX);
     page_navigator_init(&app->view->page_nav, registry, ANKI_PAGE_ID_MAX, app);
 
@@ -26,6 +34,8 @@ void anki_view_init(AnkiApp *app) {
     anki_view_stats_init_registry(app);
     anki_view_import_init_registry(app);
     anki_view_file_selector_init_registry(app);
+    anki_view_trash_init_registry(app);
+    return true;
 }
 
 void anki_view_deinit(AnkiApp *app) {

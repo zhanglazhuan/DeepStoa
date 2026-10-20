@@ -95,8 +95,17 @@ void anki_view_study_show_finished_msgbox(AnkiApp *app)
     lv_bottom_sheet_t *bs = lv_bottom_sheet_create(lv_layer_top());
     if (!bs) return;
 
-    lv_obj_t *c = study_sheet_body(bs, "Study Completed",
-        "Congratulations! You have finished studying this deck for today.");
+    const char *title = "Study Completed";
+    const char *message =
+        "You have finished the cards available for this deck today.";
+    if (app->model->study_stop_reason == ANKI_STUDY_STOP_DURATION) {
+        title = "Time Limit Reached";
+        message = "Your configured study duration has been reached.";
+    } else if (app->model->study_stop_reason == ANKI_STUDY_STOP_CLOCK) {
+        title = "Date and Time Required";
+        message = "Set the device date and time before studying scheduled cards.";
+    }
+    lv_obj_t *c = study_sheet_body(bs, title, message);
     /* 只有一个动作，仍然靠右 —— 主按钮位置和其它弹层保持一致 */
     lv_obj_t *row = study_btn_row(c);
     lv_obj_set_flex_align(row, LV_FLEX_ALIGN_END,
@@ -105,8 +114,18 @@ void anki_view_study_show_finished_msgbox(AnkiApp *app)
 }
 
 void anki_view_study_card_flip(AnkiApp* app) {
+    if (!app || !app->model || !app->view) return;
     AnkiModel *m = app->model;
     AnkiViewStudyCtx * study_ctx = app->view->page_nav.nav_ctx;
+    if (!study_ctx) return;
+
+    if (!m->current_card_available) {
+        if (study_ctx->btn_answer) lv_obj_add_flag(study_ctx->btn_answer, LV_OBJ_FLAG_HIDDEN);
+        if (study_ctx->separator) lv_obj_add_flag(study_ctx->separator, LV_OBJ_FLAG_HIDDEN);
+        if (study_ctx->lbl_answer) lv_obj_add_flag(study_ctx->lbl_answer, LV_OBJ_FLAG_HIDDEN);
+        if (study_ctx->btn_rating) lv_obj_add_flag(study_ctx->btn_rating, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
 
     if(m->is_showing_answer) {
         // 显示答案状态：隐藏显示答案按钮，显示答案和评分按钮
@@ -135,6 +154,11 @@ static lv_obj_t* build_study_page(AnkiApp* app, void* user_data) {
         app->view->page_nav.nav_ctx = NULL;
     }
     AnkiViewStudyCtx* study_ctx = malloc(sizeof(AnkiViewStudyCtx));
+    if (!study_ctx) {
+        lv_obj_t *error = lv_label_create(page.container);
+        lv_label_set_text(error, "Not enough memory to open Study");
+        return page.screen;
+    }
     memset(study_ctx, 0, sizeof(AnkiViewStudyCtx));
     app->view->page_nav.nav_ctx = study_ctx;
 
@@ -199,45 +223,56 @@ static lv_obj_t* build_study_page(AnkiApp* app, void* user_data) {
     lv_obj_set_style_border_width(btn_rating, 0, 0);
     study_ctx->btn_rating = btn_rating;
 
-    const char *btn_txt[] = {"Hard", "Good", "Easy"};
-    uint32_t grayscale[] = {0x555555, 0xAAAAAA, 0xFFFFFF}; 
-    uint32_t txt_color[] = {0xFFFFFF, 0x000000, 0x000000}; 
+    char btn_txt[4][24];
+    anki_controller_study_format_labels(app, btn_txt);
+    uint32_t grayscale[] = {0x000000, 0x555555, 0xAAAAAA, 0xFFFFFF};
+    uint32_t txt_color[] = {0xFFFFFF, 0xFFFFFF, 0x000000, 0x000000};
 
-    for(int i=0; i<3; i++) {
+    for(int i=0; i<4; i++) {
         lv_obj_t *btn = lv_btn_create(btn_rating);
         ui_style_set_btn_secondary(btn);
         lv_obj_set_style_bg_color(btn, lv_color_hex(grayscale[i]), 0);
         lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
-        lv_obj_set_size(btn, LV_PCT(32), LV_PCT(90));
+        lv_obj_set_size(btn, LV_PCT(24), LV_PCT(90));
 
         lv_obj_t *lbl = lv_label_create(btn);
         lv_label_set_text(lbl, btn_txt[i]);
         lv_obj_set_style_text_color(lbl, lv_color_hex(txt_color[i]), 0);
+        lv_obj_set_style_text_font(lbl, LV_FONT_SMALL, 0);
+        lv_obj_set_style_text_align(lbl, LV_TEXT_ALIGN_CENTER, 0);
         lv_obj_center(lbl);
+        study_ctx->rating_labels[i] = lbl;
 
         lv_obj_add_event_cb(btn, anki_controller_on_rate_card, LV_EVENT_CLICKED, app);
-        lv_obj_set_user_data(btn, (void*)(intptr_t)i);
+        lv_obj_set_user_data(btn, (void*)(intptr_t)(i + 1));
     }
 
-    if (has_card) {
+    if (has_card && m->current_card_available) {
         lv_obj_clear_flag(study_ctx->btn_answer, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(study_ctx->separator, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(study_ctx->lbl_answer, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(study_ctx->btn_rating, LV_OBJ_FLAG_HIDDEN);
-    } else {
+    } else if (!has_card) {
         lv_obj_add_flag(study_ctx->btn_answer, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(study_ctx->separator, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(study_ctx->lbl_answer, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(study_ctx->btn_rating, LV_OBJ_FLAG_HIDDEN);
         anki_view_study_show_finished_msgbox(app);
+    } else {
+        lv_obj_add_flag(study_ctx->btn_answer, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(study_ctx->separator, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(study_ctx->lbl_answer, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(study_ctx->btn_rating, LV_OBJ_FLAG_HIDDEN);
     }
 
     return page.screen;
 }
 
 void anki_view_study_refresh_card(AnkiApp *app) {
+    if (!app || !app->model || !app->view) return;
     AnkiModel *m = app->model;
     AnkiViewStudyCtx * study_ctx = app->view->page_nav.nav_ctx;
+    if (!study_ctx) return;
 
     CardPayload *payload = &m->current_card_payload;
 
@@ -249,6 +284,14 @@ void anki_view_study_refresh_card(AnkiApp *app) {
     // 2. 更新卡片背面内容
     if (study_ctx->lbl_answer) {
         lv_label_set_text(study_ctx->lbl_answer, payload->back);
+    }
+
+    char labels[4][24];
+    anki_controller_study_format_labels(app, labels);
+    for (int i = 0; i < 4; i++) {
+        if (study_ctx->rating_labels[i]) {
+            lv_label_set_text(study_ctx->rating_labels[i], labels[i]);
+        }
     }
     
     // 3. 重置显示状态

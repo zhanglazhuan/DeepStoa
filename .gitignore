@@ -3,6 +3,7 @@ build/
 
 # ── debug/ 子项目（各自是独立 ESP-IDF 工程：源码入库、编译产物忽略）──
 debug/**/build/
+debug/*/build*
 
 # ── ESP-IDF 生成 / 托管产物 ──
 sdkconfig
