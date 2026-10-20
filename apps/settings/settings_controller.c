@@ -177,7 +177,7 @@ void settings_controller_set_hour_24(lv_event_t *e)
     lv_obj_t *sw = lv_event_get_target(e);
     app->model->datetime.hour_24_enabled =
         lv_obj_has_state(sw, LV_STATE_CHECKED);
-    /* 时间格式由 system/timeservice 持久化并广播，状态栏跟着它变 */
+    /* 时间格式由 system/services/time 持久化并广播，状态栏跟着它变 */
     time_service_set_format_24h(app->model->datetime.hour_24_enabled != 0);
 }
 

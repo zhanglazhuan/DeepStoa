@@ -17,7 +17,7 @@ typedef struct ClockController {
     ClockView  *view;
 
     /* 倒计时页面的刷新定时器。只在 Timer 页可见时存在 ——
-     * 计时本身由 system/alarm 负责，这个定时器只管把数字画上去。 */
+     * 计时本身由 system/services/alarm 负责，这个定时器只管把数字画上去。 */
     lv_timer_t *ui_tick;
 } ClockController;
 

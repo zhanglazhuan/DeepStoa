@@ -42,7 +42,11 @@ void player_model_rescan(PlayerModel *model)
         }
     }
 
-    player_track_t scan[MAX_TRACKS];
+    player_track_t *scan = calloc(MAX_TRACKS, sizeof(*scan));
+    if (!scan) {
+        ESP_LOGE(TAG, "track scan allocation failed");
+        return;
+    }
     uint16_t n = player_library_scan(scan, MAX_TRACKS);
 
     memset(model->tracks, 0, sizeof(model->tracks));
@@ -61,6 +65,7 @@ void player_model_rescan(PlayerModel *model)
         }
     }
     model->track_count = n;
+    free(scan);
 }
 
 TrackInfo *player_model_find_by_path(PlayerModel *model, const char *path)

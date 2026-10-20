@@ -23,5 +23,5 @@ idf_component_register(
         "subpages/view_study.c"
     INCLUDE_DIRS "." "subpages"
     REQUIRES driver lvgl
-    PRIV_REQUIRES appmgr uilv controller timeservice
+    PRIV_REQUIRES appmgr uilv controller time
 )

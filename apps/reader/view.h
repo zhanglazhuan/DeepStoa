@@ -27,6 +27,10 @@ typedef struct ReaderViewCtx {
     lv_obj_t *bottom_bar;
     lv_obj_t *page_index_label;
     uint32_t last_rendered_bytes;
+    lv_obj_t *image_obj;
+    lv_image_dsc_t image_desc;
+    uint8_t *image_data;
+    lv_obj_t *toc_panel;
 } ReaderViewCtx;
 
 typedef struct ReaderView {
@@ -40,5 +44,6 @@ void reader_view_deinit(ReaderApp *app);
 // 对外暴露给 Controller 调用的刷新方法
 void reader_view_refresh_read_page(ReaderApp *app);
 uint32_t reader_view_get_rendered_bytes(ReaderView *view);
+void reader_view_release_media(ReaderApp *app);
 
 #endif  // READER_VIEW_H

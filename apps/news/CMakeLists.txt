@@ -40,6 +40,6 @@ idf_component_register(
     # NEWS_SVC 分支写：ESP-IDF 先用 script mode 跑一遍本文件收集依赖，那一趟
     # 拿不到命令行传进来的 -DNEWS_SVC，会按默认的 mock 分支算出空依赖，
     # 真正编译时 news_svc_http.c 就找不到 esp_http_client.h。
-    # 依赖多列几个不影响产物（这几个组件本来就被 ota / chatbot 拉进来了）。
+    # 依赖多列几个不影响产物（这几个组件本来就被 ota / chat 拉进来了）。
     PRIV_REQUIRES appmgr uilv json esp_http_client wifi
 )

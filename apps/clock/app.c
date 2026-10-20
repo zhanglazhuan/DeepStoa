@@ -61,7 +61,7 @@ static application_t clock_app = {
     .start_func = clock_app_start,
     .stop_func  = clock_app_stop,
     .back_func  = clock_app_back,
-    /* 闹钟数据在 system/alarm 里，恢复出厂交给它 */
+    /* 闹钟数据在 system/services/alarm 里，恢复出厂交给它 */
     .factory_reset_func = alarm_service_factory_reset,
     .category   = APP_CATEGORY_TOOLS,
 };

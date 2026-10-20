@@ -47,7 +47,7 @@ idf_component_register(
         "imgs/icon_weather"
     REQUIRES
         lvgl
-        timeservice
+        time
         audio
         controller
         events

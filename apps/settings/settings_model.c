@@ -7,6 +7,7 @@
 #include "esp_log.h"
 #include "settings_app.h"
 #include "settings_model.h"
+#include "time_service.h"
 
 static const char *TAG = "settings_model";
 
@@ -47,6 +48,9 @@ void settings_model_init(struct SettingsApp *app)
                "(UTC+08:00) Beijing, Singapore, Kuala Lumpur, Perth");
     }
 
+    /* The time service restores the authoritative 12/24h setting at boot. */
+    app->model->datetime.hour_24_enabled = time_service_get_format_24h();
+
     // ── Wi-Fi（只持久化电台开关；凭据由 wifi_manager 自己存，
     //    扫描结果是易失的，不入库）────────────────────────────────
     {
@@ -67,10 +71,6 @@ void settings_model_init(struct SettingsApp *app)
 
     // ── Update (OTA) ────────────────────────────────────────────────
     settings_model_load_update(&app->model->update);
-
-    // ── Storage (hardcoded defaults, not persisted) ─────────────────
-    app->model->storage.storage_used_gb  = 512;
-    app->model->storage.storage_total_gb = 2048;
 
     // ── Security (defaults, not yet persisted to flashDB) ───────────
     app->model->security.security_pin_enabled = 0;

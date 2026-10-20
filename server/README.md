@@ -112,8 +112,8 @@ idf.py -DNEWS_SVC=http build flash monitor
 | 常量 | 文件 | 默认值 |
 | --- | --- | --- |
 | `NEWS_API_BASE` | `apps/news/service/news_svc_http.c` | `http://192.168.137.1:8000` |
-| `OTA_DEFAULT_MANIFEST_URL` | `system/ota/ota.h` | `http://192.168.137.1:8000/api/ota/check` |
-| `PODCAST_SERVER` | `system/logs/log_uploader.c` | `http://192.168.137.1:8000` |
+| `OTA_DEFAULT_MANIFEST_URL` | `system/services/ota/ota.h` | `http://192.168.137.1:8000/api/ota/check` |
+| `PODCAST_SERVER` | `system/services/logs/log_uploader.c` | `http://192.168.137.1:8000` |
 
 OTA 的地址还可以在设备的 Settings 里覆盖（`settings_model` 的 `manifest_url`），
 不用重新编译。
@@ -182,7 +182,7 @@ ESP32-S3 也只有 2.4GHz，正常不冲突；先确认热点的"网络频段"�
 `-DNEWS_SVC=http`。
 
 **日志上传没反应** —— 截至目前 `log_uploader.c` 没有编进固件
-（`system/logs/CMakeLists.txt` 的 SRCS 里没有它），端点是留好的但端侧不会发。
+（`system/services/logs/CMakeLists.txt` 的 SRCS 里没有它），端点是留好的但端侧不会发。
 
 ## 目录
 

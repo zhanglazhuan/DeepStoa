@@ -1,6 +1,6 @@
 # DeepStoa OTA 服务端
 
-给设备提供固件检查 / 下载 / 结果回报的最小服务。端侧实现在 `system/ota/`，
+给设备提供固件检查 / 下载 / 结果回报的最小服务。端侧实现在 `system/services/ota/`，
 UI 在 `apps/settings/subpages/view_update.c`。
 
 ## 跑起来
@@ -12,7 +12,7 @@ pip install -r server/requirements.txt
 python server/run.py
 ```
 
-固件的 `OTA_DEFAULT_MANIFEST_URL`（`system/ota/ota.h`）就是指向那个聚合端口的。
+固件的 `OTA_DEFAULT_MANIFEST_URL`（`system/services/ota/ota.h`）就是指向那个聚合端口的。
 完整链路说明（热点、防火墙、固件常量）见 [`server/README.md`](../README.md)。
 
 只想单独调 OTA 时：

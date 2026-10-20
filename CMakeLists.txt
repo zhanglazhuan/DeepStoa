@@ -15,31 +15,31 @@ set(EXTRA_COMPONENT_DIRS
     ${CMAKE_SOURCE_DIR}/system/uilv
     ${CMAKE_SOURCE_DIR}/system/launcher
     ${CMAKE_SOURCE_DIR}/system/events
-    ${CMAKE_SOURCE_DIR}/system/logs
-    ${CMAKE_SOURCE_DIR}/system/monitor
-    ${CMAKE_SOURCE_DIR}/system/battery
-    ${CMAKE_SOURCE_DIR}/system/wifi
-    ${CMAKE_SOURCE_DIR}/system/timeservice
-    ${CMAKE_SOURCE_DIR}/system/alarm
-    ${CMAKE_SOURCE_DIR}/system/flash
-    ${CMAKE_SOURCE_DIR}/system/audio
-    ${CMAKE_SOURCE_DIR}/system/ota
+    ${CMAKE_SOURCE_DIR}/system/services/logs
+    ${CMAKE_SOURCE_DIR}/system/services/monitor
+    ${CMAKE_SOURCE_DIR}/system/services/battery
+    ${CMAKE_SOURCE_DIR}/system/services/wifi
+    ${CMAKE_SOURCE_DIR}/system/services/time
+    ${CMAKE_SOURCE_DIR}/system/services/weather_service
+    ${CMAKE_SOURCE_DIR}/system/services/alarm
+    ${CMAKE_SOURCE_DIR}/system/services/flash
+    ${CMAKE_SOURCE_DIR}/system/services/audio
+    ${CMAKE_SOURCE_DIR}/system/services/ota
+    ${CMAKE_SOURCE_DIR}/system/services/pomodoro_service
     ${CMAKE_SOURCE_DIR}/apps/settings
     ${CMAKE_SOURCE_DIR}/apps/wallpaper
     ${CMAKE_SOURCE_DIR}/apps/clock
     ${CMAKE_SOURCE_DIR}/apps/player
     ${CMAKE_SOURCE_DIR}/apps/anki
     ${CMAKE_SOURCE_DIR}/apps/calendar
-    ${CMAKE_SOURCE_DIR}/apps/chatbot
+    ${CMAKE_SOURCE_DIR}/apps/chat
     ${CMAKE_SOURCE_DIR}/apps/news
     ${CMAKE_SOURCE_DIR}/apps/reader
     ${CMAKE_SOURCE_DIR}/apps/todolist
-    ${CMAKE_SOURCE_DIR}/apps/lxj_clock
-    ${CMAKE_SOURCE_DIR}/apps/lxj_todolist
-    ${CMAKE_SOURCE_DIR}/apps/lxj_picture
-    ${CMAKE_SOURCE_DIR}/apps/lxj_audio
-    ${CMAKE_SOURCE_DIR}/apps/lxj_fiction
-    ${CMAKE_SOURCE_DIR}/apps/lxj
+    ${CMAKE_SOURCE_DIR}/apps/tovo
+    ${CMAKE_SOURCE_DIR}/apps/pomodoro
+    ${CMAKE_SOURCE_DIR}/apps/mistakebook
+    ${CMAKE_SOURCE_DIR}/apps/weather
 )
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)

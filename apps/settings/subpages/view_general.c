@@ -22,6 +22,7 @@
 #include "ota.h"
 #include "time_service.h"
 #include "lv_num_input.h"
+#include "wifi_manager.h"
 
 static const char *TAG = "settings_general";
 
@@ -52,6 +53,36 @@ static void set_manual_time_cb(lv_event_t *e)
     lv_label_set_text(ctx->status, ok
         ? "Time verified. Scheduling and recycle cleanup are enabled."
         : "Could not save this time. Check the date and saved study time.");
+}
+
+static void refresh_time_status(lv_obj_t *label)
+{
+    time_service_state_t state = time_service_get_state();
+    lv_label_set_text_fmt(label, "Time: %02d:%02d:%02d (%s)\n%s",
+                          time_service_get_hour(), time_service_get_minute(),
+                          time_service_get_second(),
+                          time_service_get_format_24h() ? "24h" : "12h",
+                          time_service_has_conflict()
+                              ? "Time conflicts with saved study history"
+                              : state == TIME_STATE_TRUSTED ? "Time verified"
+                              : state == TIME_STATE_ESTIMATED ? "Offline estimate"
+                              : "Time unknown");
+}
+
+static void refresh_time_status_cb(lv_event_t *event)
+{
+    refresh_time_status(lv_event_get_user_data(event));
+}
+
+static void sync_time_cb(lv_event_t *event)
+{
+    lv_obj_t *label = lv_event_get_user_data(event);
+    if (!wifi_is_connected()) {
+        lv_label_set_text(label, "Connect Wi-Fi before syncing time");
+        return;
+    }
+    time_service_sync_sntp();
+    lv_label_set_text(label, "Sync requested. Refresh status in a few seconds.");
 }
 
 static lv_obj_t *manual_time_input(lv_obj_t *parent, const char *title,
@@ -403,7 +434,7 @@ static lv_obj_t *build_datetime_page(struct SettingsApp *app) {
     lv_obj_t *sw24 = lv_switch_create(cont);
     ui_style_set_switch(sw24);
     lv_obj_set_width(sw24, 60);
-    if (app->model->datetime.hour_24_enabled) lv_obj_add_state(sw24, LV_STATE_CHECKED);
+    if (time_service_get_format_24h()) lv_obj_add_state(sw24, LV_STATE_CHECKED);
     else lv_obj_clear_state(sw24, LV_STATE_CHECKED);
     lv_obj_add_event_cb(sw24, settings_controller_set_hour_24,
                         LV_EVENT_VALUE_CHANGED, app);
@@ -456,15 +487,26 @@ static lv_obj_t *build_datetime_page(struct SettingsApp *app) {
     ctx->status = lv_label_create(cont);
     lv_obj_set_width(ctx->status, LV_PCT(100));
     lv_label_set_long_mode(ctx->status, LV_LABEL_LONG_WRAP);
-    time_service_state_t state = time_service_get_state();
-    lv_label_set_text(ctx->status,
-        time_service_has_conflict()
-            ? "Network time is earlier than saved study time. Scheduling stays conservative and recycle cleanup remains paused."
-            : state == TIME_STATE_TRUSTED
-            ? "Time verified."
-            : state == TIME_STATE_ESTIMATED
-                ? "Using an offline estimate. Automatic recycle cleanup is paused."
-                : "Time is unknown. Set it before studying.");
+    refresh_time_status(ctx->status);
+
+    lv_obj_t *sync_btn = lv_button_create(cont);
+    ui_style_set_btn_secondary(sync_btn);
+    lv_obj_set_width(sync_btn, LV_PCT(100));
+    ui_style_set_btn_size_large(sync_btn);
+    lv_obj_t *sync_label = lv_label_create(sync_btn);
+    lv_label_set_text(sync_label, "Sync time over Wi-Fi");
+    lv_obj_center(sync_label);
+    lv_obj_add_event_cb(sync_btn, sync_time_cb, LV_EVENT_CLICKED, ctx->status);
+
+    lv_obj_t *refresh_btn = lv_button_create(cont);
+    ui_style_set_btn_secondary(refresh_btn);
+    lv_obj_set_width(refresh_btn, LV_PCT(100));
+    ui_style_set_btn_size_large(refresh_btn);
+    lv_obj_t *refresh_label = lv_label_create(refresh_btn);
+    lv_label_set_text(refresh_label, "Refresh time status");
+    lv_obj_center(refresh_label);
+    lv_obj_add_event_cb(refresh_btn, refresh_time_status_cb,
+                        LV_EVENT_CLICKED, ctx->status);
 
     lv_obj_t *set_btn = lv_button_create(cont);
     ui_style_set_btn_primary(set_btn);

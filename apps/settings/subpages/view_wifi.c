@@ -298,6 +298,17 @@ void settings_view_wifi_update_connected(struct SettingsApp *app)
 
     settings_model_wifi_t *w = &app->model->wifi;
 
+    if (ctx->connection_status) {
+        wifi_info_t live = {0};
+        bool connected = wifi_get_info(&live) == ESP_OK && live.is_connected;
+        if (connected)
+            lv_label_set_text_fmt(ctx->connection_status, "Connected: %s", live.ssid);
+        else if (!w->enabled) lv_label_set_text(ctx->connection_status, "Wi-Fi off");
+        else if (w->state == WIFI_UI_CONNECTING)
+            lv_label_set_text(ctx->connection_status, "Connecting...");
+        else lv_label_set_text(ctx->connection_status, "Wi-Fi disconnected");
+    }
+
     if (!w->enabled || w->state == WIFI_UI_DISCONNECTED) {
         lv_obj_add_flag(ctx->connected_row, LV_OBJ_FLAG_HIDDEN);
         return;
@@ -585,6 +596,11 @@ static lv_obj_t *build_wifi_page(struct SettingsApp *app)
     lv_obj_set_style_pad_top(ctx->status_lbl, 8, 0);
     lv_label_set_text(ctx->status_lbl, "");
     lv_obj_add_flag(ctx->status_lbl, LV_OBJ_FLAG_HIDDEN);
+
+    ctx->connection_status = lv_label_create(cont);
+    lv_obj_set_width(ctx->connection_status, LV_PCT(100));
+    lv_obj_set_style_pad_hor(ctx->connection_status, 12, 0);
+    lv_label_set_text(ctx->connection_status, "Wi-Fi disconnected");
 
     /* 当前连接。NomadCast 用 0xE8F5E9 的浅绿底把它和普通行区分开，
      * 1bit 屏上没有这种中间色，改用 2px 描边卡片 —— 和本工程其他地方

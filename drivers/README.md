@@ -8,11 +8,11 @@ name. `lxj_` is reserved for migrated applications under `apps/`.
 | `aw9523` | `drivers/aw9523` | Existing driver; compare before changing |
 | `epaper_lib`, `epaper_port` | `drivers/gdem0397t81p` + display controller | Existing path; do not duplicate |
 | `button_bsp` | `system/input` and touch driver | Existing input path |
-| `esp_wifi_bsp` | `system/wifi` | Existing service |
+| `esp_wifi_bsp` | `system/services/wifi` | Existing service |
 | `sdcard_bsp` | `system/controller/sd_control` | Existing service |
-| `pcf85063_bsp` | `drivers/pcf85063` + `system/timeservice` | Register driver migrated; time policy unchanged |
+| `pcf85063_bsp` | `drivers/pcf85063` + `system/services/time` | Register driver migrated; time policy unchanged |
 | `i2c_bsp` | shared IDF I2C ownership | No standalone duplicate |
-| `axpPower` | `drivers/axp2101` | Register driver migrated; power policy remains in system/battery |
+| `axpPower` | `drivers/axp2101` | Register driver migrated; power policy remains in system/services/battery |
 | `qmi8658_bsp` | `drivers/qmi8658` | Device driver migrated; no runtime consumer enabled |
 | `shtc3_bsp` | `drivers/shtc3` | Device driver migrated; no runtime consumer enabled |
 | `es8311_bsp` | `drivers/es8311` | Control driver migrated; I2S/audio backend remains unchanged |

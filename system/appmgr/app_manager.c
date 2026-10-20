@@ -23,7 +23,7 @@
 
 static const char *TAG = "app_mgr";
 
-#define MAX_APPS        25
+#define MAX_APPS        32
 #define INVALID_APP_ID  0xFF
 
 static SemaphoreHandle_t s_mutex;

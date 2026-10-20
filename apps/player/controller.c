@@ -100,7 +100,7 @@ void player_controller_init(struct PlayerApp *app) {
 void player_controller_deinit(struct PlayerApp *app) {
     ESP_LOGI(TAG, "player_controller_deinit");
 
-    /* 关键：不要 stop 音频。播放会话属于 system/audio，
+    /* 关键：不要 stop 音频。播放会话属于 system/services/audio，
      * 退出播放器 app 之后音乐要继续放。 */
 
     if (app->controller) {

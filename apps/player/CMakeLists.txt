@@ -1,8 +1,6 @@
 # apps/player/CMakeLists.txt
-# 当前阶段：SD 卡和喇叭都没有，曲目库和音频输出都走 mock。
-# 硬件到位后换掉对应实现即可，controller / view 不需要改动：
-#   喇叭:   音频引擎已移到 system/audio（退出 app 不断音）
-#   SD 卡:  player_library.c 里的 mock 表删掉，它会自动改读真实目录
+# 曲目库读取 SD 卡上的 /sdcard/music。播放由 system/services/audio 持有，
+# 退出 app 后不会中断音频。当前音频输出支持 PCM WAV。
 idf_component_register(
     SRCS
         "app.c"

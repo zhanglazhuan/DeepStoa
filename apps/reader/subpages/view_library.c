@@ -7,8 +7,6 @@
 #include "../controller.h"
 #include "../model.h"
 
-static const char *TAG = "reader_view_library";
-
 // --- 状态与枚举定义 ---
 // 【修改1】把 LAYOUT_CARD 改名为 LAYOUT_GRID
 typedef enum { LAYOUT_LIST, LAYOUT_GRID } lib_layout_t;
@@ -19,10 +17,12 @@ static lv_obj_t *book_container = NULL;
 
 // --- 排序回调函数 ---
 static int cmp_time_desc(const void *a, const void *b) {
-    return ((ReaderBookInfo*)b)->open_time - ((ReaderBookInfo*)a)->open_time;
+    uint32_t x = ((ReaderBookInfo*)a)->open_time, y = ((ReaderBookInfo*)b)->open_time;
+    return (y > x) - (y < x);
 }
 static int cmp_time_asc(const void *a, const void *b) {
-    return ((ReaderBookInfo*)a)->open_time - ((ReaderBookInfo*)b)->open_time;
+    uint32_t x = ((ReaderBookInfo*)a)->open_time, y = ((ReaderBookInfo*)b)->open_time;
+    return (x > y) - (x < y);
 }
 static int cmp_az_asc(const void *a, const void *b) {
     return strcmp(((ReaderBookInfo*)a)->title, ((ReaderBookInfo*)b)->title);
@@ -33,8 +33,6 @@ static int cmp_az_desc(const void *a, const void *b) {
 
 // 包装函数：处理书籍点击
 static void book_clicked_wrapper(lv_event_t *e) {
-    lv_obj_t *target = lv_event_get_current_target(e);
-    int idx = (int)(intptr_t)lv_obj_get_user_data(target);
     reader_controller_on_book_clicked(e);
 }
 
@@ -44,9 +42,18 @@ static void draw_books(ReaderApp *app) {
 
     // 1. 清空旧的书籍节点
     lv_obj_clean(book_container);
+    if (app->model->book_count == 0) {
+        lv_obj_t *empty = lv_label_create(book_container);
+        lv_label_set_text(empty, !app->model->storage_ready
+            ? "SD card is not mounted"
+            : app->model->library_available
+                ? "No TXT or EPUB books in /sdcard/books"
+                : "Cannot open /sdcard/books");
+        return;
+    }
 
     // 2. 排序
-    if (app->model->book_count > 0 && app->model->sort_method >= SORT_TIME_DESC && app->model->sort_method <= SORT_AZ_DESC) {
+    if (app->model->book_count > 0 && app->model->sort_method <= SORT_AZ_DESC) {
         int (*cmp_func)(const void*, const void*) = cmp_time_desc;
         switch((lib_sort_t)app->model->sort_method) {
             case SORT_TIME_DESC: cmp_func = cmp_time_desc; break;
@@ -105,6 +112,10 @@ static void draw_books(ReaderApp *app) {
             lv_obj_add_event_cb(btn, book_clicked_wrapper, LV_EVENT_CLICKED, app);
         }
     }
+    if (app->model->book_count == MAX_BOOKS) {
+        lv_obj_t *limit = lv_label_create(book_container);
+        lv_label_set_text(limit, "Showing up to 32 books");
+    }
 }
 
 // --- 事件回调 ---
@@ -132,6 +143,12 @@ static void sort_dropdown_event_cb(lv_event_t * e) {
     // 同步到 flash
     reader_model_sync_config(app->model);
 
+    draw_books(app);
+}
+
+static void refresh_library_cb(lv_event_t *e) {
+    ReaderApp *app = lv_event_get_user_data(e);
+    reader_model_load_library(app->model);
     draw_books(app);
 }
 
@@ -177,6 +194,11 @@ static lv_obj_t* build_library_page(ReaderApp* app, void* user_data) {
     lv_obj_set_style_text_font(label_layout, &custom_font_normal, 0);
     lv_label_set_text(label_layout, app->model->lib_layout == LAYOUT_LIST ? LV_SYMBOL_LIST: MY_SYMBOL_GRID);
     lv_obj_center(label_layout); // icon 居中
+
+    lv_obj_t *refresh = lv_btn_create(top_bar);
+    lv_obj_set_width(refresh, 78);
+    lv_obj_add_event_cb(refresh, refresh_library_cb, LV_EVENT_CLICKED, app);
+    lv_label_set_text(lv_label_create(refresh), "Refresh");
 
     // 2. 创建承载书籍的容器
     book_container = lv_obj_create(page.container);

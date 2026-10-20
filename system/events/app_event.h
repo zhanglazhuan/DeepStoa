@@ -29,6 +29,7 @@ typedef enum {
     APP_EVENT_KEY_VOL_DOWN,          /* data: NULL — physical volume-down key */
     APP_EVENT_ALARM_FIRED,           /* data: app_event_alarm_t* — 闹钟到点 */
     APP_EVENT_TIMER_FINISHED,        /* data: NULL — 倒计时归零 */
+    APP_EVENT_POMODORO_FINISHED,     /* data: NULL — LXJ 番茄钟归零 */
 } app_event_t;
 
 /* ── Event data structs ─────────────────────────────────────────────────── */

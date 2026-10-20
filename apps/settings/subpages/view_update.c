@@ -68,7 +68,7 @@ static const char *manifest_url_of(SettingsApp *app)
 }
 
 /** 当前电量，-1 表示拿不到。
- *  system/battery 目前还没进构建（状态栏用的是 mock），所以这里返回 -1，
+ *  当前页面尚未接入 system/services/battery 的读数，所以这里返回 -1，
  *  弹窗只提示电量要求、不做硬拦截。接进来之后改成 battery_get_percent() 即可。 */
 static int current_battery_percent(void) { return -1; }
 

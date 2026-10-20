@@ -2,11 +2,7 @@
  * @file player_library.h
  * @brief 曲目库 —— 扫描 SD 卡上的固定音乐目录
  *
- * 数据源自动切换：PLAYER_MUSIC_DIR 所在的文件系统已挂载就读真实目录
- * （走已有的 sd_control_get_dir_list），没挂载就回落到内置 mock 列表。
- * 两种情况下 UI 完全一致，所以现在没有 SD 卡也能调试整条交互链路。
- *
- * SD 卡到位后，把 mock 那段删掉即可，view / controller 不用改。
+ * 只读取 SD 卡上 PLAYER_MUSIC_DIR 中的实际音频文件。
  */
 
 #ifndef PLAYER_LIBRARY_H
@@ -40,15 +36,11 @@ typedef struct {
  * @param max    数组容量
  * @return 实际写入的曲目数
  *
- * 会把不支持的格式也列出来（supported=false），这样用户能看到文件确实在，
- * 只是放不了 —— 比直接隐藏更好排查。
+ * 列出 .wav 和 .mp3 文件；MP3 在当前 WAV 解码器下标为不支持。
  */
 uint16_t player_library_scan(player_track_t *out, uint16_t max);
 
-/** 当前列出的是内置 mock 数据（true）还是真实文件系统（false） */
-bool player_library_using_mock(void);
-
-/** 删除一个曲目文件。mock 下只是从内存列表里移除。 */
+/** 删除一个曲目文件。 */
 bool player_library_delete(const char *path);
 
 /** 扩展名是否可播 —— 实际由解码器（audio_out）说了算 */

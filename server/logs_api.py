@@ -1,5 +1,5 @@
 """
-设备日志接收端 —— 对应 system/logs/log_uploader.c。
+设备日志接收端 —— 对应 system/services/logs/log_uploader.c。
 
 端侧行为（upload_chunk()）：
     POST /api/logs/upload
@@ -9,7 +9,7 @@
     只看 HTTP 状态码：200 就认为这批行上传成功，把 .idx 的水位往前推；
     非 200 会重试，累计 3 次失败后放弃该 session。响应体只进日志，不解析。
 
-注意：截至目前 log_uploader.c 并没有编进固件（system/logs/CMakeLists.txt 的
+注意：截至目前 log_uploader.c 并没有编进固件（system/services/logs/CMakeLists.txt 的
 SRCS 里没有它），所以这个端点暂时不会有请求进来。留着是为了端侧一打开就有
 东西接着，格式以 log_uploader.c 为准。
 """

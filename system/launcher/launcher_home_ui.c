@@ -77,11 +77,11 @@ static void create_grid_container(Page *home_page,
 
     static lv_coord_t col_dsc[] = { LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1),
                                     LV_GRID_TEMPLATE_LAST };
-    static lv_coord_t row_dsc[11];
-    for (int i = 0; i < 10; i++) {
+    static lv_coord_t row_dsc[12];
+    for (int i = 0; i < 11; i++) {
         row_dsc[i] = cell_height;
     }
-    row_dsc[10] = LV_GRID_TEMPLATE_LAST;
+    row_dsc[11] = LV_GRID_TEMPLATE_LAST;
 
     lv_obj_set_layout(home_page->container, LV_LAYOUT_GRID);
     lv_obj_set_style_pad_all(home_page->container, pad_all, LV_PART_MAIN);

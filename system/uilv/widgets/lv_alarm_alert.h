@@ -2,7 +2,7 @@
  * @file lv_alarm_alert.h
  * @brief 全局闹钟 / 计时提醒弹层。
  *
- * 闹钟和倒计时是系统服务（system/alarm），到点时用户可能在任何一个 app 里 ——
+ * 闹钟和倒计时是系统服务（system/services/alarm），到点时用户可能在任何一个 app 里 ——
  * 甚至在桌面。所以提醒必须画在 lv_layer_top 上，而不是 Clock app 的某个页面里。
  *
  * 本模块只负责显示，触发逻辑和震动都在 alarm_service：

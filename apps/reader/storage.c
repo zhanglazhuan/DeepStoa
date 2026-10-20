@@ -1,94 +1,137 @@
-#include "esp_log.h"
-#include <string.h>
-#include "flash_control.h"
 #include "storage.h"
 #include "model.h"
 
-static const char *TAG = "reader_storage";
+#include <dirent.h>
+#include <errno.h>
+#include <limits.h>
+#include <stdio.h>
+#include <string.h>
+#include <strings.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
+#include "esp_log.h"
+#include "flash_control.h"
+#include "fs_control.h"
+
+#define BOOK_DIR "/sdcard/books"
+#define POSITION_DIR "/sdcard/bookmarks/reader_progress"
+
+static const char *TAG = "reader_storage";
 extern struct fdb_kvdb g_kvdb;
 
-bool reader_app_factory_reset(void) {
-    struct fdb_blob blob;
+static bool supported_book(const char *name, bool *epub)
+{
+    const char *dot = strrchr(name, '.');
+    if (!dot) return false;
+    *epub = strcasecmp(dot, ".epub") == 0;
+    return *epub || strcasecmp(dot, ".txt") == 0;
+}
 
-    // 1. 初始化并写入全局配置
-    ReaderAppConfig default_cfg = {
-        .font_family = 0,
-        .font_size_level = 1, // 中号
-        .line_spacing = 13,   // 1.3
-        .sort_method = 0,
+bool reader_app_factory_reset(void)
+{
+    ReaderAppConfig cfg = {
+        .font_size_level = 1,
+        .line_spacing = 13,
         .active_book_idx = -1,
-        .mem_offset = 0,
-        .last_page = 0, // 默认停留在书架页
-        .layout = 1,    // 默认网格布局
-        .sort_method = 0 // 默认按时间降序
+        .layout = 1,
+        .page_index = 1,
     };
-    fdb_kv_set_blob(&g_kvdb, CONFIG_KV_KEY, fdb_blob_make(&blob, &default_cfg, sizeof(ReaderAppConfig)));
-
-    // 2. 初始化并写入默认书库记录
-    ReaderBookInfo default_books[3];
-    memset(default_books, 0, sizeof(default_books));
-
-    strcpy(default_books[0].title, "Pride and Prejudice.txt");
-    strcpy(default_books[0].filepath, "/sd/pride.txt");
-    default_books[0].total_size = 418; // 匹配 mock_txt_content 的实际长度
-    default_books[0].open_time = 1610000000;
-
-    strcpy(default_books[1].title, "Zephyr RTOS Guide.txt");
-    strcpy(default_books[1].filepath, "/sd/zephyr.txt");
-    default_books[1].total_size = 50000;
-    default_books[1].open_time = 1620000000;
-
-    strcpy(default_books[2].title, "Good study.txt");
-    strcpy(default_books[2].filepath, "/sd/pride.txt");
-    default_books[2].total_size = 418; // 匹配 mock_txt_content 的实际长度
-    default_books[2].open_time = 1630000000;
-
-    uint32_t book_cnt = 3;
-    fdb_kv_set_blob(&g_kvdb, "reader_book_cnt", fdb_blob_make(&blob, &book_cnt, sizeof(book_cnt)));
-    fdb_kv_set_blob(&g_kvdb, "reader_books", fdb_blob_make(&blob, default_books, sizeof(default_books)));
-
-    ESP_LOGI(TAG, "Reader factory reset done.");
+    reader_storage_save_config(&cfg);
     return true;
 }
 
-void reader_storage_load_config(ReaderAppConfig *cfg) {
-    // 从 FlashDB 读取 Blob
+void reader_storage_load_config(ReaderAppConfig *cfg)
+{
     struct fdb_blob blob;
-    fdb_blob_make(&blob, cfg, sizeof(ReaderAppConfig));
-
-    size_t read_len = fdb_kv_get_blob(&g_kvdb, CONFIG_KV_KEY, &blob);
-    if (read_len == sizeof(ReaderAppConfig)) {
-        ESP_LOGI(TAG, "Configuration loaded from FlashDB successfully.");
-    } else {
-        ESP_LOGW(TAG, "No valid configuration found in FlashDB, performing factory reset.");
+    memset(cfg, 0, sizeof(*cfg));
+    size_t n = fdb_kv_get_blob(&g_kvdb, CONFIG_KV_KEY,
+                               fdb_blob_make(&blob, cfg, sizeof(*cfg)));
+    if (n != sizeof(*cfg)) {
         reader_app_factory_reset();
-        fdb_kv_get_blob(&g_kvdb, CONFIG_KV_KEY, fdb_blob_make(&blob, cfg, sizeof(ReaderAppConfig)));
+        fdb_kv_get_blob(&g_kvdb, CONFIG_KV_KEY,
+                        fdb_blob_make(&blob, cfg, sizeof(*cfg)));
+    }
+    if (cfg->font_size_level > 2) cfg->font_size_level = 1;
+    if (cfg->layout > 1) cfg->layout = 0;
+    if (cfg->sort_method > 3) cfg->sort_method = 0;
+}
+
+void reader_storage_save_config(const ReaderAppConfig *cfg)
+{
+    struct fdb_blob blob;
+    if (fdb_kv_set_blob(&g_kvdb, CONFIG_KV_KEY,
+                        fdb_blob_make(&blob, (void *)cfg, sizeof(*cfg))) != FDB_NO_ERR) {
+        ESP_LOGW(TAG, "reader preferences could not be saved");
     }
 }
 
-void reader_storage_load_library(ReaderModel *model) {
-    struct fdb_blob blob;
-    uint32_t book_cnt = 0;
+void reader_storage_load_library(struct ReaderModel *model)
+{
+    model->book_count = 0;
+    model->storage_ready = fs_control_is_mounted();
+    model->library_available = false;
+    if (!model->storage_ready) return;
 
-    // 加载书库数量
-    fdb_kv_get_blob(&g_kvdb, "reader_book_cnt", fdb_blob_make(&blob, &book_cnt, sizeof(book_cnt)));
-    model->book_count = book_cnt;
-
-    // 视情况加载具体书籍元数据
-    if (book_cnt > 0) {
-        fdb_kv_get_blob(&g_kvdb, "reader_books", fdb_blob_make(&blob, model->books, sizeof(ReaderBookInfo) * book_cnt));
+    DIR *dir = opendir(BOOK_DIR);
+    if (!dir) return;
+    model->library_available = true;
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL && model->book_count < MAX_BOOKS) {
+        bool epub = false;
+        if (!supported_book(entry->d_name, &epub)) continue;
+        ReaderBookInfo *book = &model->books[model->book_count];
+        int n = snprintf(book->filepath, sizeof(book->filepath), "%s/%s",
+                         BOOK_DIR, entry->d_name);
+        if (n < 0 || (size_t)n >= sizeof(book->filepath) ||
+            strlen(entry->d_name) >= sizeof(book->title)) continue;
+        struct stat st;
+        if (stat(book->filepath, &st) != 0 || !S_ISREG(st.st_mode) ||
+            st.st_size < 0 || st.st_size > INT32_MAX) continue;
+        snprintf(book->title, sizeof(book->title), "%s", entry->d_name);
+        book->total_size = (uint32_t)st.st_size;
+        book->open_time = st.st_mtime > 0 ? (uint32_t)st.st_mtime : 0;
+        book->is_epub = epub;
+        model->book_count++;
     }
+    closedir(dir);
 }
 
-void reader_storage_save_config(const ReaderAppConfig *cfg) {
-    struct fdb_blob blob;
-    fdb_blob_make(&blob, (void *)cfg, sizeof(ReaderAppConfig));
-
-    fdb_err_t err = fdb_kv_set_blob(&g_kvdb, CONFIG_KV_KEY, &blob);
-    if (err == FDB_NO_ERR) {
-        ESP_LOGD(TAG, "Configuration saved to FlashDB.");
-    } else {
-        ESP_LOGE(TAG, "Failed to save configuration! Error code: %d", err);
+static void position_path(const char *book_path, char *out, size_t capacity)
+{
+    uint32_t hash = 2166136261U;
+    for (const unsigned char *p = (const unsigned char *)book_path; *p; ++p) {
+        hash ^= *p;
+        hash *= 16777619U;
     }
+    snprintf(out, capacity, POSITION_DIR "/%08lx.pos", (unsigned long)hash);
+}
+
+uint32_t reader_storage_load_position(const char *book_path)
+{
+    char path[128];
+    position_path(book_path, path, sizeof(path));
+    FILE *file = fopen(path, "r");
+    if (!file) return 0;
+    uint32_t page = 0;
+    unsigned long value = 0;
+    if (fscanf(file, "%lu", &value) == 1 && value <= UINT32_MAX)
+        page = (uint32_t)value;
+    fclose(file);
+    return page;
+}
+
+void reader_storage_save_position(const char *book_path, uint32_t page)
+{
+    if (!fs_control_is_mounted()) return;
+    if (mkdir("/sdcard/bookmarks", 0775) != 0 && errno != EEXIST) return;
+    if (mkdir(POSITION_DIR, 0775) != 0 && errno != EEXIST) return;
+    char path[128], temp[136];
+    position_path(book_path, path, sizeof(path));
+    snprintf(temp, sizeof(temp), "%s.tmp", path);
+    FILE *file = fopen(temp, "w");
+    if (!file) return;
+    bool ok = fprintf(file, "%lu\n", (unsigned long)page) > 0;
+    if (fclose(file) != 0) ok = false;
+    if (!ok || rename(temp, path) != 0) unlink(temp);
 }

@@ -5,7 +5,7 @@
 #include "model.h"
 #include "audio_service.h"
 
-/* 播放控制本身都在 system/audio 的 audio_service 里，UI 直接调它即可。
+/* 播放控制本身都在 system/services/audio 的 audio_service 里，UI 直接调它即可。
  * 本 controller 只保留"曲目库"相关、需要 app 上下文的操作。 */
 
 struct PlayerApp;
