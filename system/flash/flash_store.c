@@ -120,6 +120,30 @@ void flash_set_str(const char *ns, const char *key, const char *val)
     nvs_close(h);
 }
 
+bool flash_get_blob(const char *ns, const char *key, void *out, size_t size)
+{
+    if (!out || size == 0) return false;
+    nvs_handle_t h;
+    if (open_ns(ns, NVS_READONLY, &h) != ESP_OK) return false;
+    size_t stored = size;
+    esp_err_t err = nvs_get_blob(h, key, out, &stored);
+    nvs_close(h);
+    return err == ESP_OK && stored == size;
+}
+
+bool flash_set_blob(const char *ns, const char *key, const void *data, size_t size)
+{
+    if (!data || size == 0) return false;
+    nvs_handle_t h;
+    if (open_ns(ns, NVS_READWRITE, &h) != ESP_OK) return false;
+    esp_err_t err = nvs_set_blob(h, key, data, size);
+    if (err == ESP_OK) err = nvs_commit(h);
+    nvs_close(h);
+    if (err != ESP_OK) ESP_LOGE(TAG, "set blob %s/%s failed: %s",
+                                ns, key, esp_err_to_name(err));
+    return err == ESP_OK;
+}
+
 /* ── Erase ────────────────────────────────────────────────────────────────── */
 
 void flash_erase_ns(const char *ns)

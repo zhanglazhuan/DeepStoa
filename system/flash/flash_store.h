@@ -53,6 +53,14 @@ void    flash_set_bool(const char *ns, const char *key, bool val);
 int     flash_get_str(const char *ns, const char *key, char *out, size_t max, const char *def);
 void    flash_set_str(const char *ns, const char *key, const char *val);
 
+/* ── Binary blob ───────────────────────────────────────────────────────── */
+
+/** Read an exact-size blob. Returns false when missing or size-mismatched. */
+bool    flash_get_blob(const char *ns, const char *key, void *out, size_t size);
+
+/** Atomically replace one blob and commit it. */
+bool    flash_set_blob(const char *ns, const char *key, const void *data, size_t size);
+
 /* ── Erase ──────────────────────────────────────────────────────────────── */
 
 /** Erase all keys in one namespace. */

@@ -14,9 +14,9 @@ void anki_controller_on_deck_clicked(lv_event_t *e);
 void anki_controller_on_nav_btn_clicked(lv_event_t *e); // 底部导航栏切换
 
 // 处理表单提交的动作接口
-void anki_controller_add_root_deck(AnkiApp *app, const char *name);
-void anki_controller_add_sub_deck(AnkiApp *app, int parent_idx, const char *name);
-void anki_controller_edit_deck(AnkiApp *app, int deck_idx, const char *name);
+bool anki_controller_add_root_deck(AnkiApp *app, const char *name);
+bool anki_controller_add_sub_deck(AnkiApp *app, int parent_idx, const char *name);
+bool anki_controller_edit_deck(AnkiApp *app, int deck_idx, const char *name);
 
 #ifdef __cplusplus
 }

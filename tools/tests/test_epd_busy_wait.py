@@ -19,7 +19,7 @@ def function(source, signature):
         end += 1
     return source[start:end]
 # Compile production functions and call sites, replacing only hardware/time.
-before = controller.split('if (!disp) continue;', 1)[1].split('/* Take an immutable frame', 1)[0]
+before = controller.split('if (!s_display.display) continue;', 1)[1].split('/* Take an immutable frame', 1)[0]
 after = controller.split('if (transition_frame) {', 2)[2].split('/* The physical panel', 1)[0]
 harness = r'''
 #include <assert.h>
@@ -38,7 +38,6 @@ harness = r'''
 static unsigned elapsed, release_at;
 static int gpio_get_level(int pin) { (void)pin; return elapsed < release_at; }
 static void vTaskDelay(unsigned ms) { elapsed += ms; assert(elapsed <= 10010); }
-static void gpio_dump_io_configuration(FILE *out, uint64_t mask) { (void)out; (void)mask; }
 ''' + '\n'.join(function(driver, signature) for signature in [
     'static void delay_xms(', 'bool epd_is_busy(', 'bool epd_wait_ready('])
 harness += '\nstatic void before_frame(void) {' + before + '}\n'

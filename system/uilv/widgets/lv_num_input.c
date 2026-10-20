@@ -2,7 +2,11 @@
  * @file lv_num_input.c
  * @brief Number input widget (LVGL v9 API)
  */
+#include <errno.h>
+#include <limits.h>
+#include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include "lvgl.h"
 #include "lv_num_input.h"
 
@@ -13,6 +17,8 @@ typedef struct {
     lv_obj_t * btn_minus;
     int step;
     int current_val;
+    int minimum;
+    int maximum;
     lv_coord_t item_h;
     bool updating;  /* 防重入标志 */
 } lv_num_input_ctx_t;
@@ -28,9 +34,12 @@ static void step_btn_event_cb(lv_event_t * e) {
     lv_num_input_ctx_t * ctx = lv_event_get_user_data(e);
     lv_obj_t * target = lv_event_get_current_target(e);
     if (!ctx) return;
-    int delta = (target == ctx->btn_plus) ? ctx->step : -(ctx->step);
-    ctx->current_val += delta;
-    if (ctx->current_val < 0) ctx->current_val = 0;
+    int64_t delta = (target == ctx->btn_plus)
+        ? (int64_t)ctx->step : -(int64_t)ctx->step;
+    int64_t next = (int64_t)ctx->current_val + delta;
+    if (next < ctx->minimum) next = ctx->minimum;
+    if (next > ctx->maximum) next = ctx->maximum;
+    ctx->current_val = (int)next;
     if (ctx->ta) {
         char buf[16]; snprintf(buf, sizeof(buf), "%d", ctx->current_val);
         ctx->updating = true;
@@ -46,8 +55,22 @@ static void ta_event_cb(lv_event_t * e) {
     if (ctx->updating) return;  /* 程序触发的 set_text，跳过 */
     const char * txt = lv_textarea_get_text(ctx->ta);
     if (!txt || !txt[0]) return;
-    int val = atoi(txt);
-    if (val < 0) { val = 0; lv_textarea_set_text(ctx->ta, "0"); }
+    errno = 0;
+    char *end = NULL;
+    long parsed = strtol(txt, &end, 10);
+    if (end == txt || *end != '\0') return;
+    int val;
+    if (errno == ERANGE) val = ctx->maximum;
+    else if (parsed < ctx->minimum) val = ctx->minimum;
+    else if (parsed > ctx->maximum) val = ctx->maximum;
+    else val = (int)parsed;
+    if (parsed != val) {
+        char buf[16];
+        snprintf(buf, sizeof(buf), "%d", val);
+        ctx->updating = true;
+        lv_textarea_set_text(ctx->ta, buf);
+        ctx->updating = false;
+    }
     ctx->current_val = val;
     notify_value_changed(ctx, val);
 }
@@ -61,7 +84,9 @@ lv_obj_t * lv_number_input_create(lv_obj_t * parent, const char * title, int ini
     lv_num_input_ctx_t * ctx = lv_malloc(sizeof(lv_num_input_ctx_t));
     if (!ctx) return NULL;
     ctx->step = step;
-    ctx->current_val = initial_val;
+    ctx->minimum = 0;
+    ctx->maximum = INT_MAX;
+    ctx->current_val = initial_val < 0 ? 0 : initial_val;
     ctx->item_h = 40; // 默认高度
     ctx->updating = false;
 
@@ -96,14 +121,15 @@ lv_obj_t * lv_number_input_create(lv_obj_t * parent, const char * title, int ini
     lv_obj_set_width(ctx->ta, 60); // 高度由后面统一管理
     lv_obj_set_style_text_align(ctx->ta, LV_TEXT_ALIGN_CENTER, 0);
     lv_textarea_set_accepted_chars(ctx->ta, "0123456789");
+    lv_textarea_set_max_length(ctx->ta, 10);
     lv_textarea_set_cursor_click_pos(ctx->ta, true);
     lv_obj_clear_flag(ctx->ta, LV_OBJ_FLAG_SCROLLABLE);
     
-    // 【新增修复点】消除闪烁光标块本身的物理宽高对居中对齐带来的高频抖动干扰
+    // Keep the cursor from affecting vertical centering.
     lv_obj_set_style_width(ctx->ta, 0, LV_PART_CURSOR);
     lv_obj_set_style_pad_all(ctx->ta, 0, LV_PART_CURSOR);
 
-    char buf[16]; snprintf(buf, sizeof(buf), "%d", initial_val);
+    char buf[16]; snprintf(buf, sizeof(buf), "%d", ctx->current_val);
     lv_textarea_set_text(ctx->ta, buf);
     lv_obj_add_event_cb(ctx->ta, ta_event_cb, LV_EVENT_READY, ctx);
 
@@ -119,7 +145,6 @@ lv_obj_t * lv_number_input_create(lv_obj_t * parent, const char * title, int ini
         lv_label_set_text(lu, unit);
     }
 
-    // 【新增修复点】初始化完成时，主动调用一次逻辑高度控制，确保默认 40 高度下也应用完美缩排
     lv_num_input_set_height(ctx->main_cont, ctx->item_h);
 
     return ctx->main_cont;
@@ -165,4 +190,38 @@ void lv_num_input_set_height(lv_obj_t * obj, lv_coord_t h) {
     // 并且因为高度是 CONTENT 自适应，内部纵向滚动行程（max_scroll_y）被死死卡在 0 像素
     // 从而在物理层面彻底剥夺了文本框内部上下乱跳的可能。
     lv_obj_set_height(ctx->ta, LV_SIZE_CONTENT);
+}
+
+void lv_num_input_set_range(lv_obj_t * obj, int minimum, int maximum) {
+    if (!obj || minimum > maximum) return;
+    lv_num_input_ctx_t * ctx = NULL;
+    uint32_t n = lv_obj_get_event_count(obj);
+    for (uint32_t i = 0; i < n && !ctx; i++) {
+        lv_event_dsc_t * dsc = lv_obj_get_event_dsc(obj, i);
+        if (dsc && lv_event_dsc_get_cb(dsc) == ctx_store_cb)
+            ctx = lv_event_dsc_get_user_data(dsc);
+    }
+    if (!ctx) return;
+    ctx->minimum = minimum;
+    ctx->maximum = maximum;
+    if (ctx->current_val < minimum) ctx->current_val = minimum;
+    if (ctx->current_val > maximum) ctx->current_val = maximum;
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%d", ctx->current_val);
+    ctx->updating = true;
+    lv_textarea_set_text(ctx->ta, buf);
+    ctx->updating = false;
+}
+
+int lv_num_input_get_value(lv_obj_t * obj) {
+    if (!obj) return 0;
+    uint32_t n = lv_obj_get_event_count(obj);
+    for (uint32_t i = 0; i < n; i++) {
+        lv_event_dsc_t * dsc = lv_obj_get_event_dsc(obj, i);
+        if (dsc && lv_event_dsc_get_cb(dsc) == ctx_store_cb) {
+            lv_num_input_ctx_t *ctx = lv_event_dsc_get_user_data(dsc);
+            return ctx ? ctx->current_val : 0;
+        }
+    }
+    return 0;
 }

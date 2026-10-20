@@ -1,0 +1,20 @@
+你好|hello
+谢谢|thank you
+再见|goodbye
+请|please
+对不起|sorry
+没关系|it does not matter
+早上好|good morning
+晚上好|good evening
+你叫什么名字？|What is your name?
+我叫小明。|My name is Xiaoming.
+你好吗？|How are you?
+我很好。|I am fine.
+图书馆在哪里？|Where is the library?
+我想喝水。|I would like to drink water.
+这个多少钱？|How much is this?
+今天天气很好。|The weather is nice today.
+我正在学习中文。|I am studying Chinese.
+请说慢一点。|Please speak more slowly.
+我不明白。|I do not understand.
+明天见。|See you tomorrow.

@@ -59,6 +59,9 @@ static sdmmc_card_t *mount_sd(void)
     slot.d2 = DEEPV1_PIN_SD_DAT2;
     slot.d3 = DEEPV1_PIN_SD_DAT3;
     slot.width = 4;
+    /* The board has external 51 kOhm pull-ups.  Enable the ESP32-S3's
+     * internal pull-ups as additional margin for this hardware test. */
+    slot.flags |= SDMMC_SLOT_FLAG_INTERNAL_PULLUP;
 
     esp_vfs_fat_mount_config_t mount = {
         .format_if_mount_failed = false,

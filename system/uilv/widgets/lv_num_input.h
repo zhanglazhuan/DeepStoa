@@ -25,6 +25,14 @@ lv_obj_t * lv_number_input_create(lv_obj_t * parent, const char * title, int ini
  */
 void lv_num_input_set_height(lv_obj_t * obj, lv_coord_t h);
 
+/**
+ * @brief Restrict values produced by typing and the step buttons.
+ */
+void lv_num_input_set_range(lv_obj_t * obj, int minimum, int maximum);
+
+/** Return the current clamped value, or 0 for an invalid widget. */
+int lv_num_input_get_value(lv_obj_t * obj);
+
 #ifdef __cplusplus
 }
 #endif

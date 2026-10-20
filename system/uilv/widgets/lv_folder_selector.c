@@ -43,6 +43,8 @@ typedef struct {
      * 避免像 EPOS 那样从 label 文本里反解析文件名。 */
     fsel_entry_t entries[FSEL_MAX_ENTRIES];
     uint16_t     entry_count;
+    uint16_t     visible_count;
+    bool         list_ok;
 
     /* 选中状态 */
     char        selected_paths[FS_MAX_SELECTIONS][FS_MAX_PATH_LEN];
@@ -56,61 +58,16 @@ typedef struct {
 
 static void refresh_path_list(fs_selector_ctx_t *ctx);
 
-/* ── 数据源：内置 mock 树 ───────────────────────────────────────────────
- * 当前板子没有 SD 卡、工程里也没有挂载任何文件系统，所以默认走这张表。
- * 一旦 FSEL_ROOT 上挂了真实文件系统，fsel_list_dir() 会自动改读真实目录，
- * 这张表和下面的 mock_* 函数就可以整段删掉，UI 代码一行都不用动。
- * ------------------------------------------------------------------- */
-
-typedef struct {
-    const char *parent;   /* 所属目录（绝对路径） */
-    const char *name;
-    bool        is_dir;
-} mock_entry_t;
-
-static const mock_entry_t mock_vfs[] = {
-    {FSEL_ROOT,                  "decks",            true },
-    {FSEL_ROOT,                  "notes",            true },
-    {FSEL_ROOT,                  "hsk1.csv",         false},
-    {FSEL_ROOT,                  "sample_cards.txt", false},
-    {FSEL_ROOT "/decks",         "archive",          true },
-    {FSEL_ROOT "/decks",         "japanese_n5.csv",  false},
-    {FSEL_ROOT "/decks",         "gre_verbal.txt",   false},
-    {FSEL_ROOT "/decks",         "cover.png",        false},
-    {FSEL_ROOT "/decks/archive", "old_deck.csv",     false},
-    {FSEL_ROOT "/notes",         "readme.md",        false},
-};
-#define MOCK_VFS_SIZE (sizeof(mock_vfs) / sizeof(mock_vfs[0]))
-
-static uint16_t mock_list_dir(const char *path, fsel_entry_t *out, uint16_t max)
+/* Read one directory from the mounted SD card. */
+static bool fsel_list_dir(const char *path, fsel_entry_t *out, uint16_t max,
+                          uint16_t *out_count)
 {
-    uint16_t n = 0;
-    for (size_t i = 0; i < MOCK_VFS_SIZE && n < max; i++) {
-        if (strcmp(mock_vfs[i].parent, path) != 0) continue;
-        strncpy(out[n].name, mock_vfs[i].name, FSEL_MAX_NAME - 1);
-        out[n].name[FSEL_MAX_NAME - 1] = '\0';
-        out[n].is_dir = mock_vfs[i].is_dir;
-        n++;
-    }
-    return n;
-}
-
-bool folder_selector_using_mock(void)
-{
-    return !sd_control_is_ready(FSEL_ROOT);
-}
-
-/* 统一入口：有真实文件系统就读真实目录，否则回落到 mock 树 */
-static uint16_t fsel_list_dir(const char *path, fsel_entry_t *out, uint16_t max)
-{
-    if (folder_selector_using_mock()) {
-        return mock_list_dir(path, out, max);
-    }
+    *out_count = 0;
 
     file_list_t list = {0};
     if (!sd_control_get_dir_list(path, &list, NULL)) {
         ESP_LOGW(TAG, "read dir failed: %s", path);
-        return 0;
+        return false;
     }
 
     uint16_t n = 0;
@@ -121,7 +78,8 @@ static uint16_t fsel_list_dir(const char *path, fsel_entry_t *out, uint16_t max)
         n++;
     }
     sd_control_free_dir_list(&list);
-    return n;
+    *out_count = n;
+    return true;
 }
 
 /* ── 路径辅助 ───────────────────────────────────────────────────────── */
@@ -202,7 +160,11 @@ static const fsel_entry_t *entry_of(fs_selector_ctx_t *ctx, lv_obj_t *btn)
 static void update_hint(fs_selector_ctx_t *ctx)
 {
     if (!ctx->hint_label) return;
-    if (ctx->mode == FS_SEL_MODE_SINGLE_DIR) {
+    if (!ctx->list_ok) {
+        lv_label_set_text(ctx->hint_label, "SD card unavailable");
+    } else if (ctx->visible_count == 0) {
+        lv_label_set_text(ctx->hint_label, "No matching files");
+    } else if (ctx->mode == FS_SEL_MODE_SINGLE_DIR) {
         lv_label_set_text(ctx->hint_label, "OK selects this folder");
     } else if (ctx->selected_count == 0) {
         lv_label_set_text(ctx->hint_label, "Nothing selected");
@@ -344,7 +306,9 @@ static void refresh_path_list(fs_selector_ctx_t *ctx)
     lv_obj_clean(ctx->path_list);
     lv_label_set_text(ctx->path_label, ctx->current_path);
 
-    ctx->entry_count = fsel_list_dir(ctx->current_path, ctx->entries, FSEL_MAX_ENTRIES);
+    ctx->list_ok = fsel_list_dir(ctx->current_path, ctx->entries,
+                                 FSEL_MAX_ENTRIES, &ctx->entry_count);
+    ctx->visible_count = 0;
 
     /* 1. ".." 返回上一级（根目录不显示） */
     if (strcmp(ctx->current_path, FSEL_ROOT) != 0) {
@@ -369,6 +333,7 @@ static void refresh_path_list(fs_selector_ctx_t *ctx)
         lv_obj_t *btn = lv_obj_get_child(row, 0);
         lv_obj_set_user_data(btn, (void *)(intptr_t)(i + 1));
         lv_obj_add_event_cb(btn, list_btn_event_cb, LV_EVENT_CLICKED, ctx);
+        ctx->visible_count++;
 
         bool show_checkbox = (ctx->mode == FS_SEL_MODE_MULTI_DIR  &&  entry->is_dir) ||
                              (ctx->mode == FS_SEL_MODE_MULTI_FILE && !entry->is_dir);
@@ -405,9 +370,8 @@ lv_obj_t *folder_selector_create_filtered(fs_selector_mode_t mode, const char *s
     ctx->user_data  = nav_data;
     strncpy(ctx->current_path, start_path ? start_path : FSEL_ROOT, FS_MAX_PATH_LEN - 1);
 
-    ESP_LOGI(TAG, "open selector: mode=%d path=%s filter=%s source=%s",
-             (int)mode, ctx->current_path, filter_ext ? filter_ext : "(none)",
-             folder_selector_using_mock() ? "MOCK" : "real fs");
+    ESP_LOGI(TAG, "open selector: mode=%d path=%s filter=%s",
+             (int)mode, ctx->current_path, filter_ext ? filter_ext : "(none)");
 
     ctx->path_label = lv_label_create(page.container);
     lv_obj_set_width(ctx->path_label, LV_PCT(100));

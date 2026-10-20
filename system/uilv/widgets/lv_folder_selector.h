@@ -6,8 +6,7 @@
  *
  * Changes from EPOS:
  *   - zephyr/fs/fs.h + k_malloc/k_free → ESP-IDF VFS (system/controller/sd_control.h) + libc
- *   - 目录数据源可切换：挂载了文件系统就读真实目录，没挂载就用内置 mock 树，
- *     两种情况 UI 完全一致，因此现在没有 SD 卡也能调试整条交互链路。
+ *   - 目录数据通过 ESP-IDF VFS 从真实 SD 卡读取。
  *   - 条目名不再从 label 文本里反解析，改为存在 button 的 user_data 里（索引）
  */
 
@@ -22,7 +21,7 @@
 extern "C" {
 #endif
 
-/* 文件系统根目录。真实 SD 卡挂载点也用这个，切到真实数据时路径无需改动。 */
+/* SD card mount point. */
 #define FSEL_ROOT           "/sdcard"
 
 #define FS_MAX_PATH_LEN     256
@@ -64,9 +63,6 @@ lv_obj_t *folder_selector_create_filtered(fs_selector_mode_t mode, const char *s
 lv_obj_t *folder_selector_create(fs_selector_mode_t mode, const char *start_path,
                                  file_selector_cb_t callback, lv_event_cb_t back_cb,
                                  void *nav_data);
-
-/** 当前列出的是内置 mock 数据（true）还是真实文件系统（false） */
-bool folder_selector_using_mock(void);
 
 #ifdef __cplusplus
 }

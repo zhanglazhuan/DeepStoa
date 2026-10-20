@@ -10,7 +10,6 @@
 // SPI clock can be overridden with -DEPD_SPI_CLOCK_HZ=<hz> (default 10 MHz).
 
 #include <string.h>
-#include <stdio.h>
 #include "Display_EPD_W21.h"
 
 #include "deepstoa_v1.h"
@@ -27,7 +26,6 @@
 #define EPD_BUSY_ACTIVE_LEVEL   1       // busy while high (Arduino ref)
 #define EPD_BUSY_PULLUP         1       // MCU pull-up: keeps BUSY defined when the panel is off.
 #define EPD_SPI_HOST            DEEPV1_EPD_SPI_HOST
-#define EPD_BOARD_NAME          "deepstoa_v1"
 
 #ifndef EPD_SPI_CLOCK_HZ
 #define EPD_SPI_CLOCK_HZ    (10 * 1000 * 1000)  // Arduino ref uses 10 MHz
@@ -221,10 +219,6 @@ static void epd_write_data_fill(uint8_t value, uint32_t len)
 
 void epd_gpio_config(void)
 {
-    ESP_LOGI(TAG, "Configuring GDEM0397T81P (board=%s, MOSI=%d SCK=%d CS=%d BUSY=%d, %d Hz)",
-             EPD_BOARD_NAME, EPD_PIN_MOSI, EPD_PIN_SCK, EPD_PIN_CS,
-             EPD_PIN_BUSY, EPD_SPI_CLOCK_HZ);
-
     if (!aw9523_get_i2c_bus()) ESP_ERROR_CHECK(aw9523_init(DEEPV1_I2C_PORT,
                                 DEEPV1_PIN_I2C_SDA,
                                 DEEPV1_PIN_I2C_SCL,
@@ -260,12 +254,6 @@ void epd_gpio_config(void)
     delay_xms(10);
     aw9523_set_pin(EPD_AW_PIN_RST, !EPD_RST_ACTIVE_LEVEL);
 
-    ESP_LOGI(TAG, "EPD control readback: POWER=%u RESET=%u DC=%u BUSY=%d",
-             aw9523_get_pin(EPD_AW_PIN_POWER),
-             aw9523_get_pin(EPD_AW_PIN_RST),
-             aw9523_get_pin(EPD_AW_PIN_DC),
-             gpio_get_level(EPD_PIN_BUSY));
-
     // Configure SPI bus
     spi_bus_config_t bus_cfg = {
         .mosi_io_num = EPD_PIN_MOSI,
@@ -291,14 +279,12 @@ void epd_gpio_config(void)
      * 再要，就要和正在渲染的 LVGL 抢，抢不到整帧就发不出去。 */
     s_tx_bounce = heap_caps_aligned_alloc(64, EPD_TX_CHUNK,
                                           MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
-    if (s_tx_bounce) {
-        ESP_LOGI(TAG, "TX bounce buffer: %d B internal DMA @ %p", EPD_TX_CHUNK, s_tx_bounce);
-    } else {
+    if (!s_tx_bounce) {
         /* 退回旧行为：由 SPI 驱动每笔自己申请。会不会失败看当时的内存。 */
         ESP_LOGE(TAG, "TX bounce buffer alloc failed, falling back to per-transfer alloc");
     }
 
-    ESP_LOGI(TAG, "GPIO + SPI config done");
+    ESP_LOGI(TAG, "GDEM0397T81P initialized (SPI %d Hz)", EPD_SPI_CLOCK_HZ);
 }
 
 // ─── Busy / Status ─────────────────────────────────────────────────────
@@ -311,33 +297,16 @@ bool epd_is_busy(void)
 bool epd_wait_ready(void)
 {
     int waited_ms = 0;
-    static bool dumped_gpio;
 
     while (epd_is_busy()) {
         if (waited_ms >= EPD_BUSY_TIMEOUT_MS) {
-            if (!dumped_gpio) {
-                dumped_gpio = true;
-                ESP_LOGE(TAG, "BUSY timeout: POWER=%u RESET=%u DC=%u BUSY=%d",
-                         aw9523_get_pin(EPD_AW_PIN_POWER),
-                         aw9523_get_pin(EPD_AW_PIN_RST),
-                         aw9523_get_pin(EPD_AW_PIN_DC), gpio_get_level(EPD_PIN_BUSY));
-                gpio_dump_io_configuration(stdout, (1ULL << EPD_PIN_MOSI) |
-                    (1ULL << EPD_PIN_SCK) | (1ULL << EPD_PIN_CS) | (1ULL << EPD_PIN_BUSY));
-            }
-            ESP_LOGW(TAG, "BUSY still asserted after %d ms - continuing anyway "
-                          "(check AW9523 POWER/RESET and the BUSY net)",
-                     waited_ms);
+            ESP_LOGE(TAG, "BUSY timeout after %d ms", waited_ms);
             return false;
         }
         delay_xms(10);
         waited_ms += 10;
     }
 
-    // How long the panel held BUSY is useful timing information when probing
-    // the waveform, so log it whenever there was an actual wait.
-    if (waited_ms > 0) {
-        ESP_LOGI(TAG, "BUSY released after %d ms", waited_ms);
-    }
     return true;
 }
 
@@ -350,18 +319,10 @@ static void epd_read_busy(void)
 
 static void epd_reset(void)
 {
-    ESP_LOGI(TAG, "EPD reset: assert RESET=%d, POWER=%u, BUSY=%d",
-             EPD_RST_ACTIVE_LEVEL,
-             aw9523_get_pin(EPD_AW_PIN_POWER),
-             gpio_get_level(EPD_PIN_BUSY));
     aw9523_set_pin(EPD_AW_PIN_RST, EPD_RST_ACTIVE_LEVEL);  // assert reset
     delay_xms(10);
     aw9523_set_pin(EPD_AW_PIN_RST, !EPD_RST_ACTIVE_LEVEL); // release reset
     delay_xms(10);
-    ESP_LOGI(TAG, "EPD reset: released RESET=%u, POWER=%u, BUSY=%d",
-             aw9523_get_pin(EPD_AW_PIN_RST),
-             aw9523_get_pin(EPD_AW_PIN_POWER),
-             gpio_get_level(EPD_PIN_BUSY));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

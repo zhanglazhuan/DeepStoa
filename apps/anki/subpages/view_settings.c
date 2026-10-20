@@ -40,6 +40,7 @@ static void sheet_delete_cb(lv_event_t *e) {
 // View 层专属：仅负责实时更新父页面的 Label 文本
 static void view_num_input_changed_cb(lv_event_t *e) {
     NumInputCtx *ctx = lv_event_get_user_data(e);
+    if (!ctx || !ctx->target_label || !ctx->format_str) return;
     // 直接从 param 取出值
     int val = (int)(intptr_t)lv_event_get_param(e);
 
@@ -50,14 +51,20 @@ static void view_num_input_changed_cb(lv_event_t *e) {
 
 // 呼出数字输入弹窗的通用封装
 static void open_num_input_sheet(AnkiApp *app, const NumInputSheetCfg *cfg) {
-    if (!cfg) return;
+    if (!app || !cfg || !cfg->target_label || !cfg->format_str ||
+        cfg->min_val > cfg->max_val) return;
 
     NumInputCtx *ctx = lv_malloc(sizeof(NumInputCtx));
+    if (!ctx) return;
     ctx->app = app;
     ctx->target_label = cfg->target_label;
     ctx->format_str = cfg->format_str;
 
     lv_bottom_sheet_t *sheet = lv_bottom_sheet_create(lv_screen_active());
+    if (!sheet) {
+        lv_free(ctx);
+        return;
+    }
     ctx->sheet = (lv_obj_t *)sheet;
     lv_obj_add_event_cb((lv_obj_t *)sheet, sheet_delete_cb, LV_EVENT_DELETE, ctx);
     lv_bottom_sheet_add_header(sheet, cfg->title);
@@ -78,9 +85,11 @@ static void open_num_input_sheet(AnkiApp *app, const NumInputSheetCfg *cfg) {
 
     // 创建数字输入框，并使用 config 里的步长
     ctx->num_input = lv_number_input_create(content, NULL, cfg->init_val, cfg->step, NULL);
-    
-    // 如果你用的 lv_number_input 支持设置极值，可以在这里设置
-    // lv_number_input_set_range(ctx->num_input, cfg->min_val, cfg->max_val);
+    if (!ctx->num_input) {
+        lv_bottom_sheet_close(sheet);
+        return;
+    }
+    lv_num_input_set_range(ctx->num_input, cfg->min_val, cfg->max_val);
 
     lv_obj_add_event_cb(ctx->num_input, view_num_input_changed_cb, LV_EVENT_VALUE_CHANGED, ctx);
     
@@ -146,6 +155,8 @@ static void study_duration_cb(lv_event_t *e) {
         .desc = "How many minutes you want to study daily?",        // 如果不需要描述，甚至可以直接不写这行，C99 会自动初始化为 0/NULL
         .init_val = current_val,
         .step = 5,
+        .min_val = 0,
+        .max_val = 1440,
         .target_label = btn_label,
         .format_str = "%d",
         .ctrl_cb = anki_controller_settings_study_duration_changed
@@ -158,6 +169,7 @@ static void study_duration_cb(lv_event_t *e) {
 static void open_schedule_sheet(AnkiApp *app) {
     // 1. 创建底层 sheet 面板 (关闭时 LVGL 自动回收其所有内存)
     lv_bottom_sheet_t *sheet = lv_bottom_sheet_create(lv_screen_active());
+    if (!sheet) return;
 
     // 2. 添加带有 X 按钮的 Header
     lv_bottom_sheet_add_header(sheet, "Review Schedule");
@@ -169,28 +181,46 @@ static void open_schedule_sheet(AnkiApp *app) {
     lv_obj_set_style_pad_row(content, 20, 0);
 
     lv_obj_t *desc_label = lv_label_create(content);
-    lv_label_set_text(desc_label, "Review again after how many days?");
+    lv_label_set_text(desc_label,
+        "FSRS targets your chosen recall rate. Learning steps are kept under one day.");
     lv_obj_set_width(desc_label, LV_PCT(100));
     lv_label_set_long_mode(desc_label, LV_LABEL_LONG_WRAP);
     lv_obj_set_style_text_align(desc_label, LV_TEXT_ALIGN_LEFT, 0);
     lv_obj_set_style_pad_bottom(desc_label, 15, 0);
 
     AnkiSettings *settings = anki_controller_settings_get_config(app);
+    if (!settings) {
+        lv_bottom_sheet_close(sheet);
+        return;
+    }
     
-    // 4. Hard 间隔设置 - 直接绑定 Controller，传入 app 即可
-    lv_obj_t * hard_input = lv_number_input_create(content, "Hard:", settings->hard_interval, 1, NULL);
-    lv_obj_set_size(hard_input, LV_PCT(100), LV_SIZE_CONTENT);
-    lv_obj_add_event_cb(hard_input, anki_controller_settings_hard_interval_changed, LV_EVENT_VALUE_CHANGED, app);
+    lv_obj_t *retention = lv_number_input_create(
+        content, "Retention:", settings->desired_retention_percent, 1, "%");
+    if (retention) {
+        lv_num_input_set_range(retention, 70, 97);
+        lv_obj_set_size(retention, LV_PCT(100), LV_SIZE_CONTENT);
+        lv_obj_add_event_cb(retention, anki_controller_settings_retention_changed,
+                            LV_EVENT_VALUE_CHANGED, app);
+    }
 
-    // 5. Good 间隔设置
-    lv_obj_t * good_input = lv_number_input_create(content, "Good:", settings->good_interval, 1, NULL);
-    lv_obj_set_size(good_input, LV_PCT(100), LV_SIZE_CONTENT);
-    lv_obj_add_event_cb(good_input, anki_controller_settings_good_interval_changed, LV_EVENT_VALUE_CHANGED, app);
+    lv_obj_t *learning = lv_number_input_create(
+        content, "Learning:", settings->learning_step_minutes, 1, "min");
+    if (learning) {
+        lv_num_input_set_range(learning, 1, 720);
+        lv_obj_set_size(learning, LV_PCT(100), LV_SIZE_CONTENT);
+        lv_obj_add_event_cb(learning, anki_controller_settings_learning_step_changed,
+                            LV_EVENT_VALUE_CHANGED, app);
+    }
 
-    // 6. Easy 间隔设置
-    lv_obj_t * easy_input = lv_number_input_create(content, "Easy:", settings->easy_interval, 1, NULL);
-    lv_obj_set_size(easy_input, LV_PCT(100), LV_SIZE_CONTENT);
-    lv_obj_add_event_cb(easy_input, anki_controller_settings_easy_interval_changed, LV_EVENT_VALUE_CHANGED, app);
+    lv_obj_t *relearning = lv_number_input_create(
+        content, "Relearning:", settings->relearning_step_minutes, 1, "min");
+    if (relearning) {
+        lv_num_input_set_range(relearning, 1, 720);
+        lv_obj_set_size(relearning, LV_PCT(100), LV_SIZE_CONTENT);
+        lv_obj_add_event_cb(relearning,
+                            anki_controller_settings_relearning_step_changed,
+                            LV_EVENT_VALUE_CHANGED, app);
+    }
 }
 
 // 复习间隔设置回调
@@ -227,7 +257,6 @@ static lv_obj_t* build_settings_page(AnkiApp* app, void* user_data) {
     lv_label_set_text(new_cards_btn_label, text_buf);
     lv_obj_center(new_cards_btn_label);
 
-    // 【2】新增：Max Cards 设置
     lv_obj_t *max_cards_cont = lv_obj_create(page.container);
     lv_obj_set_size(max_cards_cont, LV_PCT(100), 60); 
     lv_obj_align(max_cards_cont, LV_ALIGN_TOP_MID, 0, 80); // Y: 80
@@ -235,7 +264,7 @@ static lv_obj_t* build_settings_page(AnkiApp* app, void* user_data) {
     lv_obj_set_flex_align(max_cards_cont, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     
     lv_obj_t *max_cards_label = lv_label_create(max_cards_cont);
-    lv_label_set_text(max_cards_label, "Max Cards");
+    lv_label_set_text(max_cards_label, "Max Reviews");
     
     lv_obj_t *max_cards_btn = lv_btn_create(max_cards_cont);
     ui_style_set_btn_secondary(max_cards_btn);
@@ -250,7 +279,7 @@ static lv_obj_t* build_settings_page(AnkiApp* app, void* user_data) {
     // 学习时长设置
     lv_obj_t *study_duration_cont = lv_obj_create(page.container);
     lv_obj_set_size(study_duration_cont, LV_PCT(100), 60);
-    lv_obj_align(study_duration_cont, LV_ALIGN_TOP_MID, 0, 80);
+    lv_obj_align(study_duration_cont, LV_ALIGN_TOP_MID, 0, 150);
     lv_obj_set_flex_flow(study_duration_cont, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(study_duration_cont, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     
@@ -270,12 +299,12 @@ static lv_obj_t* build_settings_page(AnkiApp* app, void* user_data) {
     // 复习间隔设置
     lv_obj_t *schedule_cont = lv_obj_create(page.container);
     lv_obj_set_size(schedule_cont, LV_PCT(100), 60);
-    lv_obj_align(schedule_cont, LV_ALIGN_TOP_MID, 0, 150);
+    lv_obj_align(schedule_cont, LV_ALIGN_TOP_MID, 0, 220);
     lv_obj_set_flex_flow(schedule_cont, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(schedule_cont, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     
     lv_obj_t *schedule_label = lv_label_create(schedule_cont);
-    lv_label_set_text(schedule_label, "Schedule");
+    lv_label_set_text(schedule_label, "FSRS Schedule");
     
     lv_obj_t *schedule_btn = lv_btn_create(schedule_cont);
     ui_style_set_btn_secondary(schedule_btn);
@@ -289,7 +318,7 @@ static lv_obj_t* build_settings_page(AnkiApp* app, void* user_data) {
     // 允许提前学习设置
     lv_obj_t *advance_study_cont = lv_obj_create(page.container);
     lv_obj_set_size(advance_study_cont, LV_PCT(100), 60);
-    lv_obj_align(advance_study_cont, LV_ALIGN_TOP_MID, 0, 220);
+    lv_obj_align(advance_study_cont, LV_ALIGN_TOP_MID, 0, 290);
     lv_obj_set_flex_flow(advance_study_cont, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(advance_study_cont, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     

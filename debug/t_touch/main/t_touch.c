@@ -14,9 +14,39 @@
 
 #include "deepstoa_v1.h"
 #include "aw9523.h"
+#include "epd_display.h"
 #include "ft6336.h"
 
 static const char *TAG = "t_touch";
+
+#define CHECKER_CELL_PX 32
+
+// E-paper RAM is column-major: one 100-byte column for each of 480 X positions.
+// Touch coordinates are intentionally left raw so the grid can be used to
+// collect calibration measurements later.
+static uint8_t s_checkerboard[EPD_ARRAY];
+
+static void show_checkerboard(void)
+{
+    const int bytes_per_column = EPD_HEIGHT / 8;
+    const int bytes_per_cell = CHECKER_CELL_PX / 8;
+
+    for (int x = 0; x < EPD_WIDTH; x++) {
+        int cell_x = x / CHECKER_CELL_PX;
+        uint8_t *column = s_checkerboard + x * bytes_per_column;
+        for (int byte_y = 0; byte_y < bytes_per_column; byte_y++) {
+            int cell_y = byte_y / bytes_per_cell;
+            column[byte_y] = ((cell_x + cell_y) & 1) ? 0x00 : 0xFF;
+        }
+    }
+
+    ESP_LOGI(TAG, "Drawing %dx%d checkerboard (%d px cells)",
+             EPD_WIDTH, EPD_HEIGHT, CHECKER_CELL_PX);
+    EPD_HW_Init_Fast();
+    EPD_WhiteScreen_ALL_Fast(s_checkerboard);
+    EPD_DeepSleep();
+    ESP_LOGI(TAG, "Checkerboard ready; touch coordinates remain uncalibrated");
+}
 
 static const char *event_str(ft6336_event_t e)
 {
@@ -47,34 +77,23 @@ void app_main(void)
 {
     ESP_LOGI(TAG, "=== t_touch: FT6336 Touch Controller Test ===");
 
-    // Step 1: Initialize the shared I2C bus through the AW9523 driver.
-    ESP_LOGI(TAG, "Step 1: Init shared I2C%d (SDA=%d SCL=%d)...",
+    // Step 1: Initialize the display and the shared I2C bus through AW9523.
+    ESP_LOGI(TAG, "Step 1: Init display + shared I2C%d (SDA=%d SCL=%d)...",
              DEEPV1_I2C_PORT, DEEPV1_PIN_I2C_SDA, DEEPV1_PIN_I2C_SCL);
-    esp_err_t ret = aw9523_init(DEEPV1_I2C_PORT,
-                                DEEPV1_PIN_I2C_SDA,
-                                DEEPV1_PIN_I2C_SCL,
-                                DEEPV1_PIN_IO_RESET,
-                                DEEPV1_AW9523_ADDR);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "FAIL: aw9523_init returned 0x%X (%s)",
-                 ret, esp_err_to_name(ret));
-        return;
-    }
+    epd_gpio_config();
+    show_checkerboard();
 
     // J8 touch power comes from LCD_3V3 (schematic pages 2 and 6).
-    // AW9523 starts with LCD_Power disabled. Hold touch reset low while
-    // enabling the shared display/touch rail through P1.7.
+    // epd_gpio_config() has enabled the shared display/touch rail through P1.7.
+    // Hold touch reset low before starting the controller.
     aw9523_set_pin(DEEPV1_AW_PIN_TOUCH_RST, 0);
-    ESP_LOGI(TAG, "Enable LCD_3V3 for touch (AW9523 P1.7)");
-    aw9523_set_pin(DEEPV1_AW_PIN_LCD_POWER, 1);
-    vTaskDelay(pdMS_TO_TICKS(50));
 
     // FT6336 reset is active-low and driven by AW9523 P1.4.
     vTaskDelay(pdMS_TO_TICKS(10));
     aw9523_set_pin(DEEPV1_AW_PIN_TOUCH_RST, 1);
     vTaskDelay(pdMS_TO_TICKS(350));
 
-    ret = i2c_master_probe(aw9523_get_i2c_bus(), DEEPV1_TOUCH_I2C_ADDR, 100);
+    esp_err_t ret = i2c_master_probe(aw9523_get_i2c_bus(), DEEPV1_TOUCH_I2C_ADDR, 100);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Touch probe at 0x%02X failed: %s. Check J8 power, reset and cable.",
                  DEEPV1_TOUCH_I2C_ADDR, esp_err_to_name(ret));

@@ -26,17 +26,12 @@
 #define EPD_BUSY_ACTIVE_LEVEL   1       // busy while high (Arduino ref)
 #define EPD_BUSY_PULLUP         1       // MCU pull-up: keeps BUSY defined when the panel is off.
 #define EPD_SPI_HOST            DEEPV1_EPD_SPI_HOST
-#define EPD_BOARD_NAME          "deepstoa_v1"
 
 #ifndef EPD_SPI_CLOCK_HZ
 #define EPD_SPI_CLOCK_HZ    (10 * 1000 * 1000)  // Arduino ref uses 10 MHz
 #endif
 
-// Upper bound on a single BUSY wait. A healthy panel releases BUSY by itself
-// once the waveform finishes; if the AW9523 POWER/RESET lines or the BUSY net
-// are miswired it stays asserted forever, and the unbounded loop below would
-// hang silently with nothing on the wire. Override with
-// -DEPD_BUSY_TIMEOUT_MS=<ms>.
+// Bound BUSY waits so a panel fault cannot block the display task forever.
 #ifndef EPD_BUSY_TIMEOUT_MS
 #define EPD_BUSY_TIMEOUT_MS 10000
 #endif
@@ -132,10 +127,6 @@ static void epd_write_data_pkg(const uint8_t *data, uint32_t len)
 
 void epd_gpio_config(void)
 {
-    ESP_LOGI(TAG, "Configuring GDEM0397T81P (board=%s, MOSI=%d SCK=%d CS=%d BUSY=%d, %d Hz)",
-             EPD_BOARD_NAME, EPD_PIN_MOSI, EPD_PIN_SCK, EPD_PIN_CS,
-             EPD_PIN_BUSY, EPD_SPI_CLOCK_HZ);
-
     ESP_ERROR_CHECK(aw9523_init(DEEPV1_I2C_PORT,
                                 DEEPV1_PIN_I2C_SDA,
                                 DEEPV1_PIN_I2C_SCL,
@@ -171,12 +162,6 @@ void epd_gpio_config(void)
     delay_xms(10);
     aw9523_set_pin(EPD_AW_PIN_RST, !EPD_RST_ACTIVE_LEVEL);
 
-    ESP_LOGI(TAG, "EPD control readback: POWER=%u RESET=%u DC=%u BUSY=%d",
-             aw9523_get_pin(EPD_AW_PIN_POWER),
-             aw9523_get_pin(EPD_AW_PIN_RST),
-             aw9523_get_pin(EPD_AW_PIN_DC),
-             gpio_get_level(EPD_PIN_BUSY));
-
     // Configure SPI bus
     spi_bus_config_t bus_cfg = {
         .mosi_io_num = EPD_PIN_MOSI,
@@ -198,7 +183,7 @@ void epd_gpio_config(void)
     };
     ESP_ERROR_CHECK(spi_bus_add_device(EPD_SPI_HOST, &dev_cfg, &spi_dev));
 
-    ESP_LOGI(TAG, "GPIO + SPI config done");
+    ESP_LOGI(TAG, "GDEM0397T81P initialized (SPI %d Hz)", EPD_SPI_CLOCK_HZ);
 }
 
 // ─── Busy / Status ─────────────────────────────────────────────────────
@@ -214,19 +199,11 @@ static void epd_read_busy(void)
 
     while (epd_is_busy()) {
         if (waited_ms >= EPD_BUSY_TIMEOUT_MS) {
-            ESP_LOGW(TAG, "BUSY still asserted after %d ms - continuing anyway "
-                          "(check AW9523 POWER/RESET and the BUSY net)",
-                     waited_ms);
+            ESP_LOGE(TAG, "BUSY timeout after %d ms", waited_ms);
             return;
         }
         delay_xms(10);
         waited_ms += 10;
-    }
-
-    // How long the panel held BUSY is useful timing information when probing
-    // the waveform, so log it whenever there was an actual wait.
-    if (waited_ms > 0) {
-        ESP_LOGI(TAG, "BUSY released after %d ms", waited_ms);
     }
 }
 
@@ -234,18 +211,10 @@ static void epd_read_busy(void)
 
 static void epd_reset(void)
 {
-    ESP_LOGI(TAG, "EPD reset: assert RESET=%d, POWER=%u, BUSY=%d",
-             EPD_RST_ACTIVE_LEVEL,
-             aw9523_get_pin(EPD_AW_PIN_POWER),
-             gpio_get_level(EPD_PIN_BUSY));
     aw9523_set_pin(EPD_AW_PIN_RST, EPD_RST_ACTIVE_LEVEL);  // assert reset
     delay_xms(10);
     aw9523_set_pin(EPD_AW_PIN_RST, !EPD_RST_ACTIVE_LEVEL); // release reset
     delay_xms(10);
-    ESP_LOGI(TAG, "EPD reset: released RESET=%u, POWER=%u, BUSY=%d",
-             aw9523_get_pin(EPD_AW_PIN_RST),
-             aw9523_get_pin(EPD_AW_PIN_POWER),
-             gpio_get_level(EPD_PIN_BUSY));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

@@ -18,13 +18,22 @@ AnkiApp g_anki_app;
 
 static void anki_app_start(lv_obj_t *root, lv_group_t *group) {
     ESP_LOGI(TAG, "Starting Anki App");
+    (void)group;
 
-    anki_model_init(&g_anki_app);
-    anki_controller_init(&g_anki_app);
-    anki_view_init(&g_anki_app);
-
-    g_anki_app.controller->model = g_anki_app.model;
-    g_anki_app.controller->view = g_anki_app.view;
+    if (!anki_model_init(&g_anki_app) ||
+        !anki_view_init(&g_anki_app) ||
+        !anki_controller_init(&g_anki_app)) {
+        ESP_LOGE(TAG, "Unable to start Anki: out of memory");
+        anki_controller_deinit(&g_anki_app);
+        anki_view_deinit(&g_anki_app);
+        anki_model_deinit(&g_anki_app);
+        if (root) {
+            lv_obj_t *label = lv_label_create(root);
+            lv_label_set_text(label, "Unable to start Anki\nNot enough memory");
+            lv_obj_center(label);
+        }
+        return;
+    }
 
     PAGE_NAVIGATE_TO((&g_anki_app), PAGE_DECKS, NULL);
 }
@@ -38,6 +47,7 @@ static void anki_app_stop(void) {
 }
 
 static bool anki_app_back(void) {
+    if (!g_anki_app.view) return false;
     return page_navigator_navigate_pop(&g_anki_app.view->page_nav, &g_anki_app);
 }
 

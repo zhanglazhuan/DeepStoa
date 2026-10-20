@@ -112,9 +112,10 @@ void app_main(void)
     ESP_LOGI(TAG, "Init alarm service...");
     alarm_service_init();
 
-    /* 内部 flash 上的 FAT，挂到 /sdcard。必须在 audio_service_init() 之前 ——
+    /* SDMMC card FAT filesystem, mounted at /sdcard. Must run before
+     * audio_service_init() ——
      * 续播恢复出来的队列路径要能解析得到。 */
-    ESP_LOGI(TAG, "Mount internal filesystem...");
+    ESP_LOGI(TAG, "Mount SD card...");
     fs_control_init();
 
     /* 只初始化 Wi-Fi 子系统（NVS / TCP-IP / netif / driver），不开电台。

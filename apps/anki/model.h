@@ -9,10 +9,17 @@
 #define ANKI_MAX_CARDS_PER_DECK 999
 #define ANKI_INITIAL_QUEUE_CAPACITY 50
 
+#define ANKI_CARD_STATUS_NEW      0U
+#define ANKI_CARD_STATUS_REVIEW   1U
+#define ANKI_CARD_STATUS_LEARNING 2U
+#define ANKI_CARD_STATUS_RELEARNING 3U
+#define ANKI_CARD_FLAG_MISSING    0x80U
+#define ANKI_CARD_STATUS_MASK     0x7FU
+
 typedef struct {
-    uint16_t card_id;
+    uint32_t card_id;
     uint32_t deck_id;         // 新增：记录该卡片所属的牌组ID
-    uint32_t file_offset;     // 这行卡片文本在 SD 卡 CSV 文件中的绝对字节偏移量
+    uint32_t file_offset;     // 这行卡片文本在 SD 卡 TXT 文件中的绝对字节偏移量
     uint16_t file_len;
     uint32_t due_timestamp;
     uint8_t interval;
@@ -31,9 +38,9 @@ typedef struct {
     int max_cards_daily;          // 最大每日计划卡片数
     int study_duration_mins;  // 学习时长
     bool allow_study_ahead;   // 允许提前学习
-    int hard_interval;        // Hard 间隔
-    int good_interval;        // Good 间隔
-    int easy_interval;        // Easy 间隔
+    int desired_retention_percent; // FSRS 目标记忆率，70-97
+    int learning_step_minutes;     // 新卡失败后的学习步骤
+    int relearning_step_minutes;   // 复习失败后的重新学习步骤
 } AnkiSettings;
 
 typedef struct {
@@ -50,6 +57,19 @@ typedef struct {
     AnkiSettings custom_settings;  // 该牌组的专属设置参数
 } AnkiDeck;
 
+typedef struct {
+    uint32_t deck_id;
+    uint32_t day_key;
+    uint16_t new_cards;
+    uint16_t review_cards;
+} AnkiDailyProgress;
+
+typedef enum {
+    ANKI_STUDY_STOP_COMPLETE = 0,
+    ANKI_STUDY_STOP_DURATION,
+    ANKI_STUDY_STOP_CLOCK,
+} AnkiStudyStopReason;
+
 typedef struct AnkiModel {
     AnkiDeck * decks;
     uint8_t deck_count;
@@ -58,11 +78,14 @@ typedef struct AnkiModel {
     uint16_t queue_count;
 
     CardPayload current_card_payload;
+    bool current_card_available;
     
     // 当前在学习的牌组索引
     int active_deck_idx;
     int active_card_idx;
     bool is_showing_answer;
+    bool rating_in_progress;
+    AnkiStudyStopReason study_stop_reason;
 
     // 当前在操作的牌组索引，用于添加/删除/编辑牌组
     int target_deck_idx;
@@ -73,19 +96,26 @@ typedef struct AnkiModel {
     // 统计项 (过去 30 天的简单学习量)
     uint16_t daily_stats[30]; 
 
+    AnkiDailyProgress daily_progress[ANKI_MAX_DECK_CAPACITY];
+    uint8_t daily_progress_count;
+
+    uint64_t study_session_started_ms;
+    bool storage_fault;
+
     uint32_t _id_generator;
     uint32_t _cards_id_generator;
 } AnkiModel;
 
 struct AnkiApp;
 
-void anki_model_init(struct AnkiApp *app);
+bool anki_model_init(struct AnkiApp *app);
 void anki_model_deinit(struct AnkiApp *app);
 
 void anki_model_load_decks_catalog(AnkiModel *model);
 void anki_model_load_cards(AnkiModel *model, uint8_t deck_id);
 
 bool anki_model_load_next_card(AnkiModel *model);
+bool anki_model_load_card_payload(AnkiModel *model, const CardIndex *card);
 
 // 增加牌组 (parent_idx 为 -1 时表示添加根牌组，否则表示添加子牌组)
 bool anki_model_add_deck(AnkiModel *model, const char *name, int parent_idx);
@@ -103,5 +133,11 @@ int anki_model_get_tree_unlearned_cards(AnkiModel *model, int deck_idx);
 
 // 更新某个具体的卡片状态到 FlashDB 中持久化
 bool anki_model_update_card(AnkiModel *model, CardIndex *card);
+void anki_model_begin_study(AnkiModel *model);
+void anki_model_record_answer(AnkiModel *model, uint32_t deck_id,
+                              bool was_new, bool was_review);
+void anki_model_get_daily_counts(AnkiModel *model, int root_deck_idx,
+                                 uint16_t *new_cards,
+                                 uint16_t *review_cards);
 
 #endif // ANKI_MODEL_H

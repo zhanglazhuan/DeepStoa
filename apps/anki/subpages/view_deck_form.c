@@ -7,6 +7,7 @@
 #include "esp_log.h"
 
 #include "lv_epd_region.h"
+#include "widgets/lv_toast.h"
 #include "controller_decks.h"
 
 #include "view_deck_form.h"
@@ -72,17 +73,24 @@ static void deck_form_confirm(lv_event_t* e) {
     if (strlen(deck_name) == 0) return;
     
     // --- 根据不同模式执行对应的 Model 数据操作 ---
+    bool saved = false;
     if (ctx->mode == DECK_FORM_MODE_ADD_ROOT) {
         ESP_LOGI(TAG, "Add Root Deck: %s", deck_name);
-        anki_controller_add_root_deck(app, deck_name);
+        saved = anki_controller_add_root_deck(app, deck_name);
     } 
     else if (ctx->mode == DECK_FORM_MODE_ADD_SUB) {
         ESP_LOGI(TAG, "Add Sub Deck to parent %d: %s", ctx->target_deck_idx, deck_name);
-        anki_controller_add_sub_deck(app, ctx->target_deck_idx, deck_name);
+        saved = anki_controller_add_sub_deck(app, ctx->target_deck_idx,
+                                             deck_name);
     } 
     else if (ctx->mode == DECK_FORM_MODE_EDIT) {
         ESP_LOGI(TAG, "Edit Deck %d: %s", ctx->target_deck_idx, deck_name);
-        anki_controller_edit_deck(app, ctx->target_deck_idx, deck_name);
+        saved = anki_controller_edit_deck(app, ctx->target_deck_idx,
+                                          deck_name);
+    }
+    if (!saved) {
+        lv_toast_show("Unable to save deck", 2500);
+        return;
     }
     
     lv_textarea_set_text(ctx->name_input, "");
@@ -125,11 +133,7 @@ static void ta_event_cb(lv_event_t* e) {
     if (!ctx || !ctx->keyboard) return;
 
     if (code == LV_EVENT_FOCUSED || code == LV_EVENT_CLICKED) {
-        ESP_LOGI(TAG, "trigger code=%d kb_hidden=%d", (int)code,
-                 (int)lv_obj_has_flag(ctx->keyboard, LV_OBJ_FLAG_HIDDEN));
-
         if (lv_obj_has_flag(ctx->keyboard, LV_OBJ_FLAG_HIDDEN)) {
-            ESP_LOGI(TAG, "SHOW keyboard");
             ta_bind_keyboard(ctx->keyboard, ta);
             lv_obj_clear_flag(ctx->keyboard, LV_OBJ_FLAG_HIDDEN);
             lv_obj_move_foreground(ctx->keyboard);
@@ -196,6 +200,7 @@ static lv_obj_t* build_deck_form_page(struct AnkiApp* app, void* user_data) {
     DeckFormContext* ctx = malloc(sizeof(DeckFormContext));
     if (!ctx) {
         ESP_LOGE(TAG, "Failed to allocate deck form context");
+        lv_obj_delete(page.screen);
         return NULL;
     }
     memset(ctx, 0, sizeof(DeckFormContext));

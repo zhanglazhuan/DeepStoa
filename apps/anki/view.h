@@ -20,7 +20,8 @@ enum anki_page_id_t{
     PAGE_SETTINGS,
     PAGE_STATS,
     PAGE_IMPORT,
-    PAGE_FILE_SELECTOR
+    PAGE_FILE_SELECTOR,
+    PAGE_TRASH
 };
 
 // 用于存放页面级别上下文，方便局部刷新
@@ -34,6 +35,7 @@ typedef struct AnkiViewStudyCtx {
     lv_obj_t * lbl_answer;
     lv_obj_t * btn_answer;
     lv_obj_t * btn_rating;
+    lv_obj_t * rating_labels[4];
 } AnkiViewStudyCtx;
 
 typedef struct AnkiView {
@@ -42,7 +44,7 @@ typedef struct AnkiView {
 
 struct AnkiApp;
 
-void anki_view_init(struct AnkiApp *app);
+bool anki_view_init(struct AnkiApp *app);
 void anki_view_deinit(struct AnkiApp *app);
 
 // 注册具体页面的构建函数

@@ -11,7 +11,7 @@ typedef struct AnkiController {
     AnkiView *view;
 } AnkiController;
 
-void anki_controller_init(struct AnkiApp *app);
+bool anki_controller_init(struct AnkiApp *app);
 void anki_controller_deinit(struct AnkiApp *app);
 void anki_controller_sync(struct AnkiApp *app);
 

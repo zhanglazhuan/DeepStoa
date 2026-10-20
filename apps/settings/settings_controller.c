@@ -197,6 +197,31 @@ void settings_controller_set_timezone(lv_event_t *e)
     }
 }
 
+bool settings_controller_set_manual_datetime(int year, int month, int day,
+                                             int hour, int minute)
+{
+    if (year < 2024 || year > 2105 || month < 1 || month > 12 ||
+        day < 1 || day > 31 || hour < 0 || hour > 23 ||
+        minute < 0 || minute > 59) return false;
+    struct tm requested = {
+        .tm_year = year - 1900,
+        .tm_mon = month - 1,
+        .tm_mday = day,
+        .tm_hour = hour,
+        .tm_min = minute,
+        .tm_sec = 0,
+        .tm_isdst = -1,
+    };
+    time_t epoch = mktime(&requested);
+    if (epoch < 0 || (uint64_t)epoch > UINT32_MAX) return false;
+    struct tm verified;
+    if (!localtime_r(&epoch, &verified) ||
+        verified.tm_year != year - 1900 || verified.tm_mon != month - 1 ||
+        verified.tm_mday != day || verified.tm_hour != hour ||
+        verified.tm_min != minute) return false;
+    return time_service_set_manual((uint32_t)epoch);
+}
+
 void settings_controller_on_general_exit(lv_event_t *e)
 {
     SettingsApp *app = (SettingsApp *)lv_event_get_user_data(e);

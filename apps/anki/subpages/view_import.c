@@ -25,7 +25,7 @@ static lv_obj_t* build_import_page(AnkiApp* app, void* user_data) {
     lv_obj_add_event_cb(sd_btn, import_from_sd_cb, LV_EVENT_CLICKED, app);
     
     lv_obj_t *sd_btn_label = lv_label_create(sd_btn);
-    lv_label_set_text(sd_btn_label, "Text file (.txt, .csv)");
+    lv_label_set_text(sd_btn_label, "Card file (.txt)");
     lv_obj_center(sd_btn_label);
 
     return page.screen;
