@@ -27,6 +27,7 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 
+#include "esp32s3_devkit.h"
 #include "epd_display.h"
 #include "deepstoa_v1.h"
 #include "aw9523.h"
@@ -39,6 +40,7 @@ static const char *TAG = "t_quality";
 #define POLL_MS             10          // button + touch polling period
 #define BUTTON_DEBOUNCE_MS  50
 #define CHECKER_CELL_PX     32
+#define TOUCH_POLL_MS       20
 
 // Touch overlay geometry (framebuffer pixels)
 #define TEXT_SCALE          2           // 5x7 glyph -> 10x14 px
@@ -407,7 +409,16 @@ void app_main(void)
     ESP_LOGI(TAG, "Step 1: Init GPIO and hardware SPI...");
     epd_gpio_config();
     button_gpio_config();
-    ESP_LOGI(TAG, "PASS: GPIO, SPI and button (GPIO%d) initialized", BUTTON_GPIO);
+
+    ESP_LOGI(TAG, "Step 2: Init FT6336 touch (SDA=%d SCL=%d RST=%d)...",
+             DEVKIT_PIN_TOUCH_SDA, DEVKIT_PIN_TOUCH_SCL, DEVKIT_PIN_TOUCH_RST);
+    bool touch_ready = ft6336_init(DEVKIT_TOUCH_I2C_PORT,
+                                   DEVKIT_PIN_TOUCH_SDA,
+                                   DEVKIT_PIN_TOUCH_SCL,
+                                   DEVKIT_PIN_TOUCH_RST,
+                                   DEVKIT_TOUCH_I2C_ADDR) == ESP_OK;
+    ESP_LOGI(TAG, "%s: GPIO, SPI, button and touch initialized",
+             touch_ready ? "PASS" : "WARN (touch disabled)");
 
     ESP_LOGI(TAG, "Step 2: Init FT6336 touch on I2C%d (SDA=%d SCL=%d)...",
              DEEPV1_TOUCH_I2C_PORT, DEEPV1_PIN_TOUCH_SDA, DEEPV1_PIN_TOUCH_SCL);
@@ -419,11 +430,13 @@ void app_main(void)
     pattern_t current = PATTERN_BLACK;
     show_pattern(current, NULL);
 
+
     ESP_LOGI(TAG, "Press the GPIO%d button to cycle: black -> white -> checkerboard", BUTTON_GPIO);
     if (touch_ok) {
         ESP_LOGI(TAG, "Touch with one or two fingers to show every contact coordinate");
     }
 
+    bool touch_active = false;
     while (1) {
         if (button_poll_press()) {
             current = (current + 1) % PATTERN_COUNT;

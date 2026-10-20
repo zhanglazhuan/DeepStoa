@@ -16,3 +16,4 @@ idf_component_register(
 # To probe the bus with a 24 MS/s logic analyzer (debug/la_tools) again, add
 #   EPD_SPI_CLOCK_HZ=2000000
 # below — but note that costs ~5x on transfer time.
+
