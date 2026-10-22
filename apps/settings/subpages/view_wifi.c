@@ -434,8 +434,8 @@ static void pwd_show_toggle_cb(lv_event_t *e)
     ViewWifiPwdCtx *ctx = (ViewWifiPwdCtx *)app->view->page_nav.nav_ctx;
     if (!ctx) return;
 
-    lv_obj_t *btn = lv_event_get_target(e);
-    bool show = lv_obj_has_state(btn, LV_STATE_CHECKED);
+    lv_obj_t *checkbox = lv_event_get_target(e);
+    bool show = lv_obj_has_state(checkbox, LV_STATE_CHECKED);
     lv_textarea_set_password_mode(ctx->pwd_input, !show);
     epd_region_flush_obj(ctx->pwd_input);
 }
@@ -477,21 +477,20 @@ static lv_obj_t *build_wifi_password_page(struct SettingsApp *app)
     /* 只设宽度：one_line 已经把高度设成 LV_SIZE_CONTENT，
      * 再写死一个小于 line_height + 2*(pad+border) 的值会让文字上下跳。 */
     lv_obj_set_width(ctx->pwd_input, LV_PCT(100));
+    lv_obj_set_style_border_width(ctx->pwd_input, 2, LV_PART_MAIN);
+    lv_obj_set_style_border_color(ctx->pwd_input, lv_color_black(), LV_PART_MAIN);
+    lv_obj_set_style_radius(ctx->pwd_input, 2, LV_PART_MAIN);
     lv_obj_set_scrollbar_mode(ctx->pwd_input, LV_SCROLLBAR_MODE_OFF);
     lv_obj_set_style_opa(ctx->pwd_input, LV_OPA_TRANSP, LV_PART_CURSOR);
+    lv_obj_set_style_bg_opa(ctx->pwd_input, LV_OPA_TRANSP, LV_PART_CURSOR);
+    lv_obj_set_style_border_opa(ctx->pwd_input, LV_OPA_TRANSP, LV_PART_CURSOR);
     lv_obj_set_style_anim_duration(ctx->pwd_input, 0, LV_PART_CURSOR);
     lv_obj_add_event_cb(ctx->pwd_input, pwd_ta_event_cb, LV_EVENT_FOCUSED, app);
     lv_obj_add_event_cb(ctx->pwd_input, pwd_ta_event_cb, LV_EVENT_CLICKED, app);
 
-    lv_obj_t *show_btn = lv_btn_create(cont);
-    ui_style_set_btn_secondary(show_btn);
-    lv_obj_add_flag(show_btn, LV_OBJ_FLAG_CHECKABLE);
-    lv_obj_set_size(show_btn, 140, 44);
-    lv_obj_set_style_radius(show_btn, 2, 0);
-    lv_obj_t *sl = lv_label_create(show_btn);
-    lv_label_set_text(sl, LV_SYMBOL_EYE_OPEN "  Show password");
-    lv_obj_center(sl);
-    lv_obj_add_event_cb(show_btn, pwd_show_toggle_cb, LV_EVENT_VALUE_CHANGED, app);
+    lv_obj_t *show_checkbox = lv_checkbox_create(cont);
+    lv_checkbox_set_text(show_checkbox, "Show password");
+    lv_obj_add_event_cb(show_checkbox, pwd_show_toggle_cb, LV_EVENT_VALUE_CHANGED, app);
 
     lv_obj_t *btn_row = lv_obj_create(cont);
     lv_obj_remove_style_all(btn_row);

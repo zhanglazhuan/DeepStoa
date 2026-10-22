@@ -106,48 +106,15 @@ def _fetch_font_and_codepoint(icon_name, size=24):
 
 
 def _render_icon_to_png(font_bytes, codepoint, size, output_path):
-    """Render a single icon glyph to PNG at the given size, perfectly centered."""
+    """Render a single icon glyph at the requested pixel size, without scaling."""
     char = chr(codepoint)
-
-    # Render at a larger size on oversized canvas, then downsample for quality
-    render_size = size * 8
-    font = ImageFont.truetype(BytesIO(font_bytes), render_size)
-    canvas = Image.new("RGBA", (render_size, render_size), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(canvas)
-    draw.text((0, 0), char, font=font, fill=(0, 0, 0, 255))
-
-    # Find exact pixel bounds
-    pixels = canvas.load()
-    xmin, ymin, xmax, ymax = render_size, render_size, 0, 0
-    for y in range(render_size):
-        for x in range(render_size):
-            if pixels[x, y][3] > 0:
-                if x < xmin: xmin = x
-                if y < ymin: ymin = y
-                if x > xmax: xmax = x
-                if y > ymax: ymax = y
-
-    if xmax < xmin:  # No pixels found (empty glyph)
-        canvas.save(output_path, "PNG")
-        return output_path
-
-    # Crop to content
-    cropped = canvas.crop((xmin, ymin, xmax + 1, ymax + 1))
-
-    # Scale to fit target size with 1px padding
-    cw, ch = cropped.size
-    pad = 1
-    target = size - pad * 2
-    scale = min(target / cw, target / ch)
-    new_w = max(1, int(cw * scale))
-    new_h = max(1, int(ch * scale))
-    scaled = cropped.resize((new_w, new_h), Image.LANCZOS)
-
-    # Center on final canvas
+    font = ImageFont.truetype(BytesIO(font_bytes), size)
     img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    ox = (size - new_w) // 2
-    oy = (size - new_h) // 2
-    img.paste(scaled, (ox, oy), scaled)
+    draw = ImageDraw.Draw(img)
+    left, top, right, bottom = draw.textbbox((0, 0), char, font=font)
+    x = (size - (right - left)) // 2 - left
+    y = (size - (bottom - top)) // 2 - top
+    draw.text((x, y), char, font=font, fill=(0, 0, 0, 255))
 
     img.save(output_path, "PNG")
     return output_path

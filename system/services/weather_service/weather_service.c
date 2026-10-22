@@ -20,9 +20,11 @@ typedef struct {
     char city_code[16];
 } weather_request_t;
 
-static QueueHandle_t s_requests;
-static QueueHandle_t s_results;
-static TaskHandle_t s_worker;
+static struct {
+    QueueHandle_t requests;
+    QueueHandle_t results;
+    TaskHandle_t worker;
+} s_weather_ctx;
 
 static const char *json_string(const cJSON *object, const char *key)
 {
@@ -93,28 +95,28 @@ static void weather_worker(void *arg)
     (void)arg;
     weather_request_t request;
     for (;;) {
-        if (xQueueReceive(s_requests, &request, portMAX_DELAY) != pdTRUE) continue;
+        if (xQueueReceive(s_weather_ctx.requests, &request, portMAX_DELAY) != pdTRUE) continue;
         weather_result_t result = {.token = request.token};
         result.success = fetch_weather(request.city_code, &result.report);
-        if (xQueueSend(s_results, &result, 0) != pdTRUE) {
+        if (xQueueSend(s_weather_ctx.results, &result, 0) != pdTRUE) {
             /* A closed app may leave old results unread. Keep the newest one. */
             weather_result_t discarded;
-            xQueueReceive(s_results, &discarded, 0);
-            xQueueSend(s_results, &result, 0);
+            xQueueReceive(s_weather_ctx.results, &discarded, 0);
+            xQueueSend(s_weather_ctx.results, &result, 0);
         }
     }
 }
 
 bool weather_service_init(void)
 {
-    if (s_worker) return true;
-    if (!s_requests) s_requests = xQueueCreate(2, sizeof(weather_request_t));
-    if (!s_results) s_results = xQueueCreate(4, sizeof(weather_result_t));
-    if (!s_requests || !s_results) return false;
+    if (s_weather_ctx.worker) return true;
+    if (!s_weather_ctx.requests) s_weather_ctx.requests = xQueueCreate(2, sizeof(weather_request_t));
+    if (!s_weather_ctx.results) s_weather_ctx.results = xQueueCreate(4, sizeof(weather_result_t));
+    if (!s_weather_ctx.requests || !s_weather_ctx.results) return false;
     if (xTaskCreate(weather_worker, "weather_fetch", 6144, NULL, 4,
-                    &s_worker) != pdPASS) {
+                    &s_weather_ctx.worker) != pdPASS) {
         ESP_LOGE(TAG, "failed to start worker");
-        s_worker = NULL;
+        s_weather_ctx.worker = NULL;
         return false;
     }
     return true;
@@ -122,16 +124,16 @@ bool weather_service_init(void)
 
 bool weather_service_request(const char *city_code, uint32_t token)
 {
-    if (!s_worker || !city_code || strlen(city_code) != 9) return false;
+    if (!s_weather_ctx.worker || !city_code || strlen(city_code) != 9) return false;
     for (const char *p = city_code; *p; ++p) {
         if (*p < '0' || *p > '9') return false;
     }
     weather_request_t request = {.token = token};
     snprintf(request.city_code, sizeof(request.city_code), "%s", city_code);
-    return xQueueSend(s_requests, &request, 0) == pdTRUE;
+    return xQueueSend(s_weather_ctx.requests, &request, 0) == pdTRUE;
 }
 
 bool weather_service_try_take_result(weather_result_t *out)
 {
-    return out && s_results && xQueueReceive(s_results, out, 0) == pdTRUE;
+    return out && s_weather_ctx.results && xQueueReceive(s_weather_ctx.results, out, 0) == pdTRUE;
 }

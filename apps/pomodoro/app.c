@@ -6,8 +6,10 @@
 #include "controller.h"
 #include "model.h"
 #include "view.h"
+#include "ui_utils.h"
 
 static const char *TAG = "pomodoro";
+EPOS_LV_IMG_DECLARE(app_pomodoro_logo);
 PomodoroApp g_pomodoro_app;
 
 static void start(lv_obj_t *root, lv_group_t *group)
@@ -50,7 +52,7 @@ static bool back(void)
 
 static application_t s_application = {
     .name = "Pomodoro",
-    .icon = NULL,
+    .icon = EPOS_LV_IMG_USE(app_pomodoro_logo),
     .start_func = start,
     .stop_func = stop,
     .back_func = back,

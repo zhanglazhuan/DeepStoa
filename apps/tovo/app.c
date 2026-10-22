@@ -5,8 +5,10 @@
 #include "esp_log.h"
 #include "model.h"
 #include "view.h"
+#include "ui_utils.h"
 
 static const char *TAG = "tovo_app";
+EPOS_LV_IMG_DECLARE(app_tovo_logo);
 TovoApp g_tovo_app;
 
 static void start(lv_obj_t *root, lv_group_t *group)
@@ -45,7 +47,7 @@ static bool back(void)
 
 static application_t s_application = {
     .name = "Tovo",
-    .icon = NULL,
+    .icon = EPOS_LV_IMG_USE(app_tovo_logo),
     .start_func = start,
     .stop_func = stop,
     .back_func = back,

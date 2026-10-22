@@ -2,7 +2,6 @@
 
 #include <stdlib.h>
 #include "app.h"
-#include "app_manager.h"
 #include "model.h"
 #include "view.h"
 #include "pomodoro_service.h"
@@ -52,10 +51,4 @@ void pomodoro_controller_reset(lv_event_t *event)
     (void)event;
     pomodoro_service_reset();
     sync_view(&g_pomodoro_app);
-}
-
-void pomodoro_controller_close(lv_event_t *event)
-{
-    (void)event;
-    app_manager_exit_app();
 }

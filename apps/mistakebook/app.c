@@ -5,8 +5,10 @@
 #include "app.h"
 #include "model.h"
 #include "view.h"
+#include "ui_utils.h"
 
 static const char *TAG = "mistakebook";
+EPOS_LV_IMG_DECLARE(app_misktakebook_logo);
 MistakebookApp g_mistakebook_app;
 
 static void mistakebook_app_start(lv_obj_t *root, lv_group_t *group)
@@ -45,7 +47,7 @@ static bool mistakebook_app_back(void)
 
 static application_t s_application = {
     .name = "Mistakebook",
-    .icon = NULL,
+    .icon = EPOS_LV_IMG_USE(app_misktakebook_logo),
     .start_func = mistakebook_app_start,
     .stop_func = mistakebook_app_stop,
     .back_func = mistakebook_app_back,

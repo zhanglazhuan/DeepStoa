@@ -3,7 +3,6 @@
 
 #include <stdbool.h>
 #include "framework/page_navigator.h"
-#include "widgets/lv_weather_panel.h"
 
 struct WeatherApp;
 
@@ -14,7 +13,11 @@ enum {
 
 typedef struct WeatherView {
     page_navigator_t page_nav;
-    lv_weather_panel_t panel;
+    lv_obj_t *root;
+    lv_obj_t *city;
+    lv_obj_t *refresh;
+    lv_obj_t *status;
+    lv_obj_t *image;
 } WeatherView;
 
 bool weather_view_init(struct WeatherApp *app);

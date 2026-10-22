@@ -7,8 +7,11 @@
 #include "app.h"
 #include "controller.h"
 #include "model.h"
+#include "widgets/lv_floating_button.h"
 #include "widgets/lv_page.h"
 #include "theme/lv_theme_hardcore.h"
+
+LV_IMAGE_DECLARE(refresh);
 
 static lv_obj_t *make_button(lv_obj_t *parent, const char *text,
                              lv_event_cb_t callback, void *user_data)
@@ -77,24 +80,18 @@ static lv_obj_t *build_list_page(void *handle, void *user_data)
     (void)user_data;
     MistakebookApp *app = handle;
     Page page = lv_page_create("Mistakebook", false, NULL, NULL);
-    lv_obj_t *close = make_button(page.header_right, "X",
-                                  mistakebook_controller_close, NULL);
-    lv_obj_set_size(close, 40, 40);
     lv_obj_set_width(page.container, LV_PCT(100));
     lv_obj_set_style_pad_row(page.container, 8, 0);
-
-    lv_obj_t *toolbar = lv_obj_create(page.container);
-    lv_obj_set_width(toolbar, LV_PCT(100));
-    lv_obj_set_height(toolbar, 58);
-    lv_obj_set_style_border_width(toolbar, 0, 0);
-    lv_obj_set_flex_flow(toolbar, LV_FLEX_FLOW_ROW);
-    make_button(toolbar, "Refresh", mistakebook_controller_reload, NULL);
 
     app->view->list = lv_obj_create(page.container);
     lv_obj_set_width(app->view->list, LV_PCT(100));
     lv_obj_set_flex_grow(app->view->list, 1);
     lv_obj_set_flex_flow(app->view->list, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_style_pad_row(app->view->list, 8, 0);
+    lv_obj_set_style_pad_bottom(app->view->list,
+                                LV_FLOATING_BUTTON_SIZE + LV_FLOATING_BUTTON_MARGIN, 0);
+    lv_floating_button_create_image(page.container, &refresh,
+                                    mistakebook_controller_reload, NULL);
     mistakebook_view_refresh_list(app);
     return page.screen;
 }

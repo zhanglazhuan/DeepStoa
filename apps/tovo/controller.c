@@ -1,7 +1,6 @@
 #include "controller.h"
 
 #include "app.h"
-#include "app_manager.h"
 #include "model.h"
 #include "view.h"
 
@@ -17,12 +16,6 @@ void tovo_controller_refresh(lv_event_t *event)
     if (!app->model || !app->view) return;
     tovo_model_reload(app->model);
     tovo_view_render(app);
-}
-
-void tovo_controller_close(lv_event_t *event)
-{
-    (void)event;
-    app_manager_exit_app();
 }
 
 void tovo_controller_toggle(size_t index, void *user_data)

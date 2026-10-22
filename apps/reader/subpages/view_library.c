@@ -6,6 +6,9 @@
 #include "../view.h"
 #include "../controller.h"
 #include "../model.h"
+#include "lv_floating_button.h"
+
+LV_IMAGE_DECLARE(refresh);
 
 // --- 状态与枚举定义 ---
 // 【修改1】把 LAYOUT_CARD 改名为 LAYOUT_GRID
@@ -68,6 +71,8 @@ static void draw_books(ReaderApp *app) {
     if (app->model->lib_layout == LAYOUT_LIST) {
         lv_obj_set_flex_flow(book_container, LV_FLEX_FLOW_COLUMN);
         lv_obj_set_flex_align(book_container, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START);
+        lv_obj_set_style_pad_bottom(book_container,
+                                    LV_FLOATING_BUTTON_SIZE + LV_FLOATING_BUTTON_MARGIN, 0);
 
         for (int i = 0; i < app->model->book_count; i++) {
             lv_obj_t *btn = lv_btn_create(book_container);
@@ -90,7 +95,8 @@ static void draw_books(ReaderApp *app) {
         lv_obj_set_flex_align(book_container, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
         lv_obj_set_style_pad_column(book_container, 10, 0);
         lv_obj_set_style_pad_top(book_container, 10, 0);
-        lv_obj_set_style_pad_bottom(book_container, 20, 0);
+        lv_obj_set_style_pad_bottom(book_container,
+                                    LV_FLOATING_BUTTON_SIZE + LV_FLOATING_BUTTON_MARGIN, 0);
         lv_obj_set_style_pad_row(book_container, 20, 0);
 
         for (int i = 0; i < app->model->book_count; i++) {
@@ -195,11 +201,6 @@ static lv_obj_t* build_library_page(ReaderApp* app, void* user_data) {
     lv_label_set_text(label_layout, app->model->lib_layout == LAYOUT_LIST ? LV_SYMBOL_LIST: MY_SYMBOL_GRID);
     lv_obj_center(label_layout); // icon 居中
 
-    lv_obj_t *refresh = lv_btn_create(top_bar);
-    lv_obj_set_width(refresh, 78);
-    lv_obj_add_event_cb(refresh, refresh_library_cb, LV_EVENT_CLICKED, app);
-    lv_label_set_text(lv_label_create(refresh), "Refresh");
-
     // 2. 创建承载书籍的容器
     book_container = lv_obj_create(page.container);
     lv_obj_set_width(book_container, LV_PCT(100));
@@ -207,6 +208,9 @@ static lv_obj_t* build_library_page(ReaderApp* app, void* user_data) {
     lv_obj_set_style_bg_opa(book_container, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(book_container, 0, 0);
     lv_obj_add_flag(book_container, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_floating_button_create_image(page.container, &refresh,
+                                    refresh_library_cb, app);
 
     // 3. 初始渲染
     draw_books(app);

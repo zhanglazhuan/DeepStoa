@@ -4,7 +4,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "app_manager.h"
 #include "app.h"
 #include "model.h"
 #include "view.h"
@@ -94,10 +93,4 @@ void weather_controller_refresh(lv_event_t *event)
 {
     (void)event;
     request_weather(&g_weather_app);
-}
-
-void weather_controller_close(lv_event_t *event)
-{
-    (void)event;
-    app_manager_exit_app();
 }

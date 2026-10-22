@@ -2,7 +2,6 @@
 
 #include <stdint.h>
 
-#include "app_manager.h"
 #include "app.h"
 #include "model.h"
 #include "view.h"
@@ -57,10 +56,4 @@ void mistakebook_controller_mark_reviewed(lv_event_t *event)
                           app->model->read_only ? "Source has unsupported or extra rows; review changes disabled"
                                                 : "Could not save review status");
     }
-}
-
-void mistakebook_controller_close(lv_event_t *event)
-{
-    (void)event;
-    app_manager_exit_app();
 }

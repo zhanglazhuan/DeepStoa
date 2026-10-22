@@ -7,8 +7,10 @@
 #include "controller.h"
 #include "model.h"
 #include "view.h"
+#include "ui_utils.h"
 
 static const char *TAG = "weather";
+EPOS_LV_IMG_DECLARE(app_weather_logo);
 WeatherApp g_weather_app;
 
 static void weather_start(lv_obj_t *root, lv_group_t *group)
@@ -52,7 +54,7 @@ static bool weather_back(void)
 
 static application_t s_application = {
     .name = "Weather",
-    .icon = NULL,
+    .icon = EPOS_LV_IMG_USE(app_weather_logo),
     .start_func = weather_start,
     .stop_func = weather_stop,
     .back_func = weather_back,

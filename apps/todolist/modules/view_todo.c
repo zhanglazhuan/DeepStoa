@@ -1,7 +1,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include "esp_log.h"
-#include "lv_ui_style_guide.h"
+#include "lv_floating_button.h"
 #include "lv_toast.h"
 
 #include "view_todo.h"
@@ -23,9 +23,6 @@ extern TodoListApp g_todolist_app;
 #define TODO_ROW_PAD_V      10
 #define TODO_ROW_GAP        16
 #define TODO_ICON_HIT_EXT   12
-/* 悬浮添加按钮的尺寸与边距，列表底部要留出同样的空间，否则会压住最后一行 */
-#define TODO_FAB_SIZE       72
-#define TODO_FAB_MARGIN     24
 
 /* 行绑定的是任务 id，不是 todolist_task_t* ——
  * model 的增删改用 memmove 压缩数组，指针在数据变化后会指向另一条任务。 */
@@ -157,28 +154,12 @@ void view_build_todo_tab(TodoListView* v) {
     lv_obj_set_flex_grow(todo_list, 1);
     lv_obj_set_style_pad_top(todo_list, 8, 0);
     /* 给悬浮按钮让出位置，否则最后一行的编辑图标和把手会被压住 */
-    lv_obj_set_style_pad_bottom(todo_list, TODO_FAB_SIZE + TODO_FAB_MARGIN, 0);
+    lv_obj_set_style_pad_bottom(todo_list,
+                                LV_FLOATING_BUTTON_SIZE + LV_FLOATING_BUTTON_MARGIN, 0);
     home_ctx->todo_list = todo_list;
 
-    // 悬浮的 + 按钮
-    lv_obj_t * todo_add_btn = lv_button_create(tab);
-    ui_style_set_btn_primary(todo_add_btn);
-    lv_obj_set_size(todo_add_btn, TODO_FAB_SIZE, TODO_FAB_SIZE);
-    lv_obj_set_ext_click_area(todo_add_btn, 8);
-    lv_obj_add_flag(todo_add_btn, LV_OBJ_FLAG_IGNORE_LAYOUT | LV_OBJ_FLAG_FLOATING);
-    lv_obj_align(todo_add_btn, LV_ALIGN_BOTTOM_RIGHT, -TODO_FAB_MARGIN, -TODO_FAB_MARGIN);
-    /* 方角而不是圆形：与主题 radius=2 的硬边语言一致，
-     * 而且 1bpp 面板画不出抗锯齿，圆形边缘只会变成锯齿。 */
-    lv_obj_set_style_radius(todo_add_btn, 2, 0);
-    lv_obj_set_style_shadow_width(todo_add_btn, 0, LV_PART_MAIN);
-
-    lv_obj_t * add_lbl = lv_label_create(todo_add_btn);
-    lv_label_set_text(add_lbl, LV_SYMBOL_PLUS);
-    lv_obj_set_style_text_font(add_lbl, LV_FONT_NORMAL, 0);
-    lv_obj_set_style_text_color(add_lbl, lv_color_white(), 0);
-    lv_obj_center(add_lbl);
-
-    lv_obj_add_event_cb(todo_add_btn, controller_on_add_btn_clicked, LV_EVENT_CLICKED, NULL);
+    lv_floating_button_create(tab, LV_SYMBOL_PLUS,
+                              controller_on_add_btn_clicked, NULL);
 
     view_refresh_todo_list(NULL);
 }

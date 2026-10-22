@@ -41,18 +41,21 @@ static const char *TAG = "ota";
 #define WORKER_PRIO      4
 
 /* ── 模块状态 ───────────────────────────────────────────────────────────
- * s_state / s_progress 由 worker 写、LVGL 线程读，都是单字，volatile 足够。
- * s_pending 只在 LVGL 线程里写（结果都经 lv_async_call 弹回去）。 */
-static volatile ota_state_t s_state    = OTA_IDLE;
-static volatile int         s_progress = 0;
-static volatile bool        s_busy     = false;
-static int                  s_expected_size = 0;   /* manifest 给的字节数，算百分比用 */
-static char                 s_error[96]     = "";
-static ota_update_info_t    s_pending;
-static bool                 s_has_pending   = false;
-static char                 s_device_id[13] = "";
-/* 最近一次查更新用的 manifest 地址，刷完后拿来推导回报地址 */
-static char                 s_manifest_url[OTA_URL_LEN] = "";
+ * state / progress 由 worker 写、LVGL 线程读，都是单字，volatile 足够。
+ * pending 只在 LVGL 线程里写（结果都经 lv_async_call 弹回去）。 */
+static struct {
+    volatile ota_state_t state;
+    volatile int progress;
+    volatile bool busy;
+    int expected_size;             /* manifest 给的字节数，算百分比用 */
+    char error[96];
+    ota_update_info_t pending;
+    bool has_pending;
+    char device_id[13];
+    char manifest_url[OTA_URL_LEN]; /* 最近一次查更新的地址，升级后推导回报地址 */
+} s_ota_ctx = {
+    .state = OTA_IDLE,
+};
 
 /* ── 小工具 ─────────────────────────────────────────────────────────── */
 
@@ -78,7 +81,7 @@ static bool url_is_http(const char *url)
 
 static void set_error(const char *msg)
 {
-    snprintf(s_error, sizeof(s_error), "%s", msg ? msg : "");
+    snprintf(s_ota_ctx.error, sizeof(s_ota_ctx.error), "%s", msg ? msg : "");
 }
 
 /** GET url，响应体写进新分配的 buf（调用方 free）。 */
@@ -191,12 +194,12 @@ static void deliver_check(void *arg)
     check_result_t *res = arg;
 
     if (res->result == OTA_CHECK_UPDATE_AVAILABLE) {
-        s_pending     = res->info;
-        s_has_pending = true;
+        s_ota_ctx.pending     = res->info;
+        s_ota_ctx.has_pending = true;
     } else if (res->result == OTA_CHECK_UP_TO_DATE) {
-        s_has_pending = false;
+        s_ota_ctx.has_pending = false;
     }
-    if (s_state == OTA_CHECKING) s_state = OTA_IDLE;
+    if (s_ota_ctx.state == OTA_CHECKING) s_ota_ctx.state = OTA_IDLE;
 
     if (res->cb) {
         res->cb(res->result,
@@ -265,7 +268,7 @@ static void check_task(void *arg)
 
 done:
     free(job);
-    s_busy = false;
+    s_ota_ctx.busy = false;
     vTaskDelete(NULL);
 }
 
@@ -278,7 +281,7 @@ static bool start_check(const char *manifest_url, ota_check_cb_t cb,
         if (cb) cb(OTA_CHECK_ERR_NO_URL, NULL, user_data);
         return false;
     }
-    if (s_busy) {
+    if (s_ota_ctx.busy) {
         if (cb) cb(OTA_CHECK_ERR_BUSY, NULL, user_data);
         return false;
     }
@@ -289,18 +292,18 @@ static bool start_check(const char *manifest_url, ota_check_cb_t cb,
         return false;
     }
     snprintf(job->url, sizeof(job->url), "%s", url);
-    snprintf(s_manifest_url, sizeof(s_manifest_url), "%s", url);
+    snprintf(s_ota_ctx.manifest_url, sizeof(s_ota_ctx.manifest_url), "%s", url);
     job->cb        = cb;
     job->user_data = user_data;
     job->delay_ms  = delay_ms;
 
-    s_busy  = true;
-    s_state = OTA_CHECKING;
+    s_ota_ctx.busy  = true;
+    s_ota_ctx.state = OTA_CHECKING;
     if (xTaskCreate(check_task, "ota_check", WORKER_STACK, job, WORKER_PRIO, NULL) != pdPASS) {
         ESP_LOGE(TAG, "failed to create check task");
         free(job);
-        s_busy  = false;
-        s_state = OTA_IDLE;
+        s_ota_ctx.busy  = false;
+        s_ota_ctx.state = OTA_IDLE;
         if (cb) cb(OTA_CHECK_ERR_NETWORK, NULL, user_data);
         return false;
     }
@@ -319,12 +322,12 @@ void ota_boot_check(const char *manifest_url, int delay_ms)
 
 const ota_update_info_t *ota_get_pending(void)
 {
-    return s_has_pending ? &s_pending : NULL;
+    return s_ota_ctx.has_pending ? &s_ota_ctx.pending : NULL;
 }
 
 void ota_clear_pending(void)
 {
-    s_has_pending = false;
+    s_ota_ctx.has_pending = false;
 }
 
 /* ── 下载 & 刷写 ────────────────────────────────────────────────────── */
@@ -337,14 +340,14 @@ static void on_ota_event(void *arg, esp_event_base_t base, int32_t id, void *dat
     switch (id) {
     case ESP_HTTPS_OTA_START:
         ESP_LOGI(TAG, "download started");
-        s_progress = 0;
+        s_ota_ctx.progress = 0;
         break;
     case ESP_HTTPS_OTA_WRITE_FLASH: {
         /* event_data 是“累计已写字节数”的 int*，不是本次增量 */
         int written = data ? *(const int *)data : 0;
-        if (s_expected_size > 0) {
-            int pct = (int)((written * 100LL) / s_expected_size);
-            s_progress = pct < 0 ? 0 : (pct > 100 ? 100 : pct);
+        if (s_ota_ctx.expected_size > 0) {
+            int pct = (int)((written * 100LL) / s_ota_ctx.expected_size);
+            s_ota_ctx.progress = pct < 0 ? 0 : (pct > 100 ? 100 : pct);
         }
         break;
     }
@@ -352,7 +355,7 @@ static void on_ota_event(void *arg, esp_event_base_t base, int32_t id, void *dat
         ESP_LOGI(TAG, "boot partition switched");
         break;
     case ESP_HTTPS_OTA_FINISH:
-        s_progress = 100;
+        s_ota_ctx.progress = 100;
         break;
     case ESP_HTTPS_OTA_ABORT:
         ESP_LOGE(TAG, "download aborted");
@@ -388,20 +391,20 @@ static void remember_attempt(const ota_update_info_t *info)
     flash_set_str(OTA_NS, KEY_PEND_TO, info->version);
     flash_set_str(OTA_NS, KEY_PEND_FROM, ota_running_version());
     flash_set_str(OTA_NS, KEY_PEND_URL,
-                  s_manifest_url[0] ? s_manifest_url : OTA_DEFAULT_MANIFEST_URL);
+                  s_ota_ctx.manifest_url[0] ? s_ota_ctx.manifest_url : OTA_DEFAULT_MANIFEST_URL);
 }
 
 static void install_task(void *arg)
 {
     ota_update_info_t *info = arg;
 
-    s_state    = OTA_DOWNLOADING;
-    s_progress = 0;
+    s_ota_ctx.state    = OTA_DOWNLOADING;
+    s_ota_ctx.progress = 0;
     set_error("");
 
-    s_expected_size = info->size > 0 ? info->size : probe_content_length(info->url);
+    s_ota_ctx.expected_size = info->size > 0 ? info->size : probe_content_length(info->url);
     ESP_LOGI(TAG, "installing v%s from %s (%d bytes)",
-             info->version, info->url, s_expected_size);
+             info->version, info->url, s_ota_ctx.expected_size);
 
     esp_http_client_config_t http_cfg = {
         .url               = info->url,
@@ -418,8 +421,8 @@ static void install_task(void *arg)
     esp_err_t err = esp_https_ota(&ota_cfg);
     if (err == ESP_OK) {
         remember_attempt(info);
-        s_progress = 100;
-        s_state    = OTA_READY;
+        s_ota_ctx.progress = 100;
+        s_ota_ctx.state    = OTA_READY;
         ESP_LOGI(TAG, "v%s written, waiting for reboot", info->version);
     } else {
         ESP_LOGE(TAG, "install failed: %s", esp_err_to_name(err));
@@ -429,11 +432,11 @@ static void install_task(void *arg)
         case ESP_ERR_INVALID_VERSION:     set_error("Bad image version");  break;
         default:                          set_error("Download interrupted"); break;
         }
-        s_state = OTA_FAILED;
+        s_ota_ctx.state = OTA_FAILED;
     }
 
     free(info);
-    s_busy = false;
+    s_ota_ctx.busy = false;
     vTaskDelete(NULL);
 }
 
@@ -441,43 +444,43 @@ bool ota_install_async(const ota_update_info_t *info)
 {
     if (!info || !url_is_http(info->url)) {
         set_error("Invalid firmware URL");
-        s_state = OTA_FAILED;
+        s_ota_ctx.state = OTA_FAILED;
         return false;
     }
-    if (s_busy) return false;
+    if (s_ota_ctx.busy) return false;
     if (!wifi_is_connected()) {
         set_error("WiFi not connected");
-        s_state = OTA_FAILED;
+        s_ota_ctx.state = OTA_FAILED;
         return false;
     }
 
     ota_update_info_t *copy = malloc(sizeof(*copy));
     if (!copy) {
         set_error("Out of memory");
-        s_state = OTA_FAILED;
+        s_ota_ctx.state = OTA_FAILED;
         return false;
     }
     *copy = *info;
 
-    s_busy = true;
+    s_ota_ctx.busy = true;
     if (xTaskCreate(install_task, "ota_install", WORKER_STACK, copy, WORKER_PRIO, NULL) != pdPASS) {
         ESP_LOGE(TAG, "failed to create install task");
         free(copy);
-        s_busy = false;
+        s_ota_ctx.busy = false;
         set_error("Cannot start updater");
-        s_state = OTA_FAILED;
+        s_ota_ctx.state = OTA_FAILED;
         return false;
     }
     return true;
 }
 
-ota_state_t ota_get_state(void)    { return s_state; }
-int         ota_get_progress(void) { return s_progress; }
-const char *ota_get_error(void)    { return s_error; }
+ota_state_t ota_get_state(void)    { return s_ota_ctx.state; }
+int         ota_get_progress(void) { return s_ota_ctx.progress; }
+const char *ota_get_error(void)    { return s_ota_ctx.error; }
 
 void ota_apply_and_reboot(void)
 {
-    if (s_state != OTA_READY) return;
+    if (s_ota_ctx.state != OTA_READY) return;
     ESP_LOGI(TAG, "rebooting into new firmware");
     vTaskDelay(pdMS_TO_TICKS(200));
     esp_restart();
@@ -568,13 +571,13 @@ const char *ota_running_version(void)
 
 const char *ota_device_id(void)
 {
-    if (s_device_id[0] == '\0') {
+    if (s_ota_ctx.device_id[0] == '\0') {
         uint8_t mac[6] = {0};
         esp_read_mac(mac, ESP_MAC_WIFI_STA);
-        snprintf(s_device_id, sizeof(s_device_id), "%02x%02x%02x%02x%02x%02x",
+        snprintf(s_ota_ctx.device_id, sizeof(s_ota_ctx.device_id), "%02x%02x%02x%02x%02x%02x",
                  mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
     }
-    return s_device_id;
+    return s_ota_ctx.device_id;
 }
 
 void ota_init(void)

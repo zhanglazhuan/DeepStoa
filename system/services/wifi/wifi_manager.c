@@ -35,15 +35,18 @@ static const char *TAG = "WiFi";
  * Internal State
  * ======================================================================== */
 
-static bool                 s_initialized  = false;
-static bool                 s_radio_on     = false;
-static bool                 s_connected    = false;
-static esp_netif_t         *s_netif_sta    = NULL;
-static EventGroupHandle_t   s_event_group  = NULL;
-
-/* Cached credentials for reconnect */
-static char s_saved_ssid[33];
-static char s_saved_password[65];
+static struct {
+    bool initialized;
+    bool radio_on;
+    bool connected;
+    esp_netif_t *netif_sta;
+    EventGroupHandle_t event_group;
+    char saved_ssid[33];
+    char saved_password[65];
+    wifi_info_t cached_info;
+    wifi_connected_cb_t on_connected;
+    wifi_disconnected_cb_t on_disconnected;
+} s_wifi_ctx;
 
 /* Event group bits */
 #define WIFI_CONNECTED_BIT     BIT0
@@ -54,13 +57,6 @@ static char s_saved_password[65];
 /* Timeouts (ms) */
 #define WIFI_CONNECT_TIMEOUT_MS   15000
 #define WIFI_SCAN_TIMEOUT_MS      10000
-
-/* Cached connection info */
-static wifi_info_t s_cached_info;
-
-/* User callbacks */
-static wifi_connected_cb_t    s_on_connected    = NULL;
-static wifi_disconnected_cb_t s_on_disconnected = NULL;
 
 /* ========================================================================
  * Forward declarations
@@ -79,15 +75,15 @@ static esp_err_t wait_for_connection(void);
 
 esp_err_t wifi_manager_init(void)
 {
-    if (s_initialized) {
+    if (s_wifi_ctx.initialized) {
         ESP_LOGW(TAG, "Already initialized");
         return ESP_OK;
     }
 
     ESP_LOGI(TAG, "Initializing WiFi subsystem...");
 
-    s_event_group = xEventGroupCreate();
-    assert(s_event_group);
+    s_wifi_ctx.event_group = xEventGroupCreate();
+    assert(s_wifi_ctx.event_group);
 
     /* NVS */
     esp_err_t ret = nvs_flash_init();
@@ -103,8 +99,8 @@ esp_err_t wifi_manager_init(void)
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
     /* STA netif */
-    s_netif_sta = esp_netif_create_default_wifi_sta();
-    assert(s_netif_sta);
+    s_wifi_ctx.netif_sta = esp_netif_create_default_wifi_sta();
+    assert(s_wifi_ctx.netif_sta);
 
     /* WiFi driver init — don't start radio yet, wifi_start() will do it */
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
@@ -133,33 +129,33 @@ esp_err_t wifi_manager_init(void)
     {
         const wifi_cred_t *c = wifi_store_most_recent();
         if (c) {
-            strncpy(s_saved_ssid, c->ssid, sizeof(s_saved_ssid) - 1);
-            s_saved_ssid[sizeof(s_saved_ssid) - 1] = '\0';
-            strncpy(s_saved_password, c->password, sizeof(s_saved_password) - 1);
-            s_saved_password[sizeof(s_saved_password) - 1] = '\0';
+            strncpy(s_wifi_ctx.saved_ssid, c->ssid, sizeof(s_wifi_ctx.saved_ssid) - 1);
+            s_wifi_ctx.saved_ssid[sizeof(s_wifi_ctx.saved_ssid) - 1] = '\0';
+            strncpy(s_wifi_ctx.saved_password, c->password, sizeof(s_wifi_ctx.saved_password) - 1);
+            s_wifi_ctx.saved_password[sizeof(s_wifi_ctx.saved_password) - 1] = '\0';
             ESP_LOGI(TAG, "Restored credentials for \"%s\" (%u saved)",
-                     s_saved_ssid, wifi_store_count());
+                     s_wifi_ctx.saved_ssid, wifi_store_count());
         }
     }
 
-    s_initialized = true;
+    s_wifi_ctx.initialized = true;
     ESP_LOGI(TAG, "WiFi subsystem initialized (radio OFF — call wifi_start())");
     return ESP_OK;
 }
 
 esp_err_t wifi_manager_deinit(void)
 {
-    if (!s_initialized) return ESP_OK;
+    if (!s_wifi_ctx.initialized) return ESP_OK;
 
-    if (s_radio_on) {
+    if (s_wifi_ctx.radio_on) {
         esp_wifi_stop();
-        s_radio_on = false;
+        s_wifi_ctx.radio_on = false;
     }
     esp_wifi_deinit();
     /* netif and event loop cleanup is handled by ESP-IDF on deinit */
 
-    s_initialized = false;
-    s_connected   = false;
+    s_wifi_ctx.initialized = false;
+    s_wifi_ctx.connected   = false;
     clear_cached_info();
     ESP_LOGI(TAG, "WiFi deinitialized");
     return ESP_OK;
@@ -171,36 +167,36 @@ esp_err_t wifi_manager_deinit(void)
 
 esp_err_t wifi_start(void)
 {
-    if (!s_initialized) {
+    if (!s_wifi_ctx.initialized) {
         ESP_LOGE(TAG, "Call wifi_manager_init() first");
         return ESP_ERR_INVALID_STATE;
     }
-    if (s_radio_on) {
+    if (s_wifi_ctx.radio_on) {
         ESP_LOGW(TAG, "Radio already on");
         return ESP_OK;
     }
 
     ESP_ERROR_CHECK(esp_wifi_start());
-    s_radio_on = true;
+    s_wifi_ctx.radio_on = true;
     ESP_LOGI(TAG, "WiFi radio ON");
     return ESP_OK;
 }
 
 esp_err_t wifi_stop(void)
 {
-    if (!s_initialized || !s_radio_on) return ESP_OK;
+    if (!s_wifi_ctx.initialized || !s_wifi_ctx.radio_on) return ESP_OK;
 
     /* If connected, disconnect first to trigger event cleanup */
-    if (s_connected) {
+    if (s_wifi_ctx.connected) {
         esp_wifi_disconnect();
-        s_connected = false;
+        s_wifi_ctx.connected = false;
     }
 
     /* Wait for disconnect to propagate */
     vTaskDelay(pdMS_TO_TICKS(200));
 
     ESP_ERROR_CHECK(esp_wifi_stop());
-    s_radio_on = false;
+    s_wifi_ctx.radio_on = false;
     clear_cached_info();
     ESP_LOGI(TAG, "WiFi radio OFF");
     return ESP_OK;
@@ -212,7 +208,7 @@ esp_err_t wifi_stop(void)
 
 esp_err_t wifi_connect(const char *ssid, const char *password)
 {
-    if (!s_initialized) {
+    if (!s_wifi_ctx.initialized) {
         ESP_LOGE(TAG, "Call wifi_manager_init() first");
         return ESP_ERR_INVALID_STATE;
     }
@@ -222,13 +218,13 @@ esp_err_t wifi_connect(const char *ssid, const char *password)
     }
 
     /* Ensure radio is on */
-    if (!s_radio_on) {
+    if (!s_wifi_ctx.radio_on) {
         esp_err_t ret = wifi_start();
         if (ret != ESP_OK) return ret;
     }
 
     /* Disconnect if already connected */
-    if (s_connected) {
+    if (s_wifi_ctx.connected) {
         wifi_disconnect();
     }
 
@@ -244,10 +240,10 @@ esp_err_t wifi_connect(const char *ssid, const char *password)
         return ret;
     }
 
-    strncpy(s_saved_ssid, ssid, sizeof(s_saved_ssid) - 1);
-    s_saved_ssid[sizeof(s_saved_ssid) - 1] = '\0';
-    strncpy(s_saved_password, password, sizeof(s_saved_password) - 1);
-    s_saved_password[sizeof(s_saved_password) - 1] = '\0';
+    strncpy(s_wifi_ctx.saved_ssid, ssid, sizeof(s_wifi_ctx.saved_ssid) - 1);
+    s_wifi_ctx.saved_ssid[sizeof(s_wifi_ctx.saved_ssid) - 1] = '\0';
+    strncpy(s_wifi_ctx.saved_password, password, sizeof(s_wifi_ctx.saved_password) - 1);
+    s_wifi_ctx.saved_password[sizeof(s_wifi_ctx.saved_password) - 1] = '\0';
 
     /* 确认真的连上了才写进 FlashDB */
     wifi_store_put(ssid, password);
@@ -256,41 +252,41 @@ esp_err_t wifi_connect(const char *ssid, const char *password)
 
 esp_err_t wifi_reconnect(void)
 {
-    if (!s_initialized) {
+    if (!s_wifi_ctx.initialized) {
         ESP_LOGE(TAG, "Call wifi_manager_init() first");
         return ESP_ERR_INVALID_STATE;
     }
-    if (s_saved_ssid[0] == '\0') {
+    if (s_wifi_ctx.saved_ssid[0] == '\0') {
         ESP_LOGE(TAG, "No saved credentials — call wifi_connect() or wifi_set_config() first");
         return ESP_ERR_INVALID_STATE;
     }
 
-    ESP_LOGI(TAG, "Reconnecting to \"%s\"...", s_saved_ssid);
+    ESP_LOGI(TAG, "Reconnecting to \"%s\"...", s_wifi_ctx.saved_ssid);
 
-    if (!s_radio_on) {
+    if (!s_wifi_ctx.radio_on) {
         esp_err_t ret = wifi_start();
         if (ret != ESP_OK) return ret;
     }
-    if (s_connected) {
+    if (s_wifi_ctx.connected) {
         wifi_disconnect();
     }
 
-    esp_err_t ret = connect_internal(s_saved_ssid, s_saved_password);
+    esp_err_t ret = connect_internal(s_wifi_ctx.saved_ssid, s_wifi_ctx.saved_password);
     if (ret != ESP_OK) return ret;
 
     ret = wait_for_connection();
-    if (ret == ESP_OK) wifi_store_touch(s_saved_ssid);   /* 刷新 last_used */
+    if (ret == ESP_OK) wifi_store_touch(s_wifi_ctx.saved_ssid);   /* 刷新 last_used */
     return ret;
 }
 
 esp_err_t wifi_disconnect(void)
 {
-    if (!s_initialized) return ESP_ERR_INVALID_STATE;
-    if (!s_connected)   return ESP_OK;
+    if (!s_wifi_ctx.initialized) return ESP_ERR_INVALID_STATE;
+    if (!s_wifi_ctx.connected)   return ESP_OK;
 
     esp_err_t ret = esp_wifi_disconnect();
     if (ret == ESP_OK) {
-        s_connected = false;
+        s_wifi_ctx.connected = false;
         clear_cached_info();
         ESP_LOGI(TAG, "Disconnected");
     }
@@ -304,7 +300,7 @@ esp_err_t wifi_disconnect(void)
 esp_err_t wifi_scan(wifi_ap_record_t *records, uint16_t max_count,
                     uint16_t *found_count, uint32_t timeout_ms)
 {
-    if (!s_initialized) {
+    if (!s_wifi_ctx.initialized) {
         ESP_LOGE(TAG, "Call wifi_manager_init() first");
         return ESP_ERR_INVALID_STATE;
     }
@@ -313,13 +309,13 @@ esp_err_t wifi_scan(wifi_ap_record_t *records, uint16_t max_count,
     }
 
     /* Ensure radio is on (scan needs it) */
-    if (!s_radio_on) {
+    if (!s_wifi_ctx.radio_on) {
         esp_err_t ret = wifi_start();
         if (ret != ESP_OK) return ret;
     }
 
     /* Temporarily disconnect for full-channel scan */
-    bool was_connected = s_connected;
+    bool was_connected = s_wifi_ctx.connected;
     wifi_config_t saved_cfg = { 0 };
     if (was_connected) {
         esp_wifi_get_config(WIFI_IF_STA, &saved_cfg);
@@ -327,7 +323,7 @@ esp_err_t wifi_scan(wifi_ap_record_t *records, uint16_t max_count,
         vTaskDelay(pdMS_TO_TICKS(200));
     }
 
-    xEventGroupClearBits(s_event_group, WIFI_SCAN_DONE_BIT);
+    xEventGroupClearBits(s_wifi_ctx.event_group, WIFI_SCAN_DONE_BIT);
 
     wifi_scan_config_t scan_cfg = {
         .ssid        = NULL,
@@ -348,7 +344,7 @@ esp_err_t wifi_scan(wifi_ap_record_t *records, uint16_t max_count,
     }
 
     EventBits_t bits = xEventGroupWaitBits(
-        s_event_group, WIFI_SCAN_DONE_BIT, pdTRUE, pdFALSE,
+        s_wifi_ctx.event_group, WIFI_SCAN_DONE_BIT, pdTRUE, pdFALSE,
         pdMS_TO_TICKS(timeout_ms > 0 ? timeout_ms : WIFI_SCAN_TIMEOUT_MS));
 
     if (!(bits & WIFI_SCAN_DONE_BIT)) {
@@ -398,15 +394,15 @@ reconnect:
 
 esp_err_t wifi_get_info(wifi_info_t *info)
 {
-    if (!s_initialized || !info) {
+    if (!s_wifi_ctx.initialized || !info) {
         return ESP_ERR_INVALID_ARG;
     }
 
-    memcpy(info, &s_cached_info, sizeof(wifi_info_t));
-    info->is_connected = s_connected;
+    memcpy(info, &s_wifi_ctx.cached_info, sizeof(wifi_info_t));
+    info->is_connected = s_wifi_ctx.connected;
 
     /* Refresh live values */
-    if (s_connected) {
+    if (s_wifi_ctx.connected) {
         wifi_ap_record_t ap_info;
         if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
             info->rssi    = ap_info.rssi;
@@ -419,7 +415,7 @@ esp_err_t wifi_get_info(wifi_info_t *info)
 
 bool wifi_is_connected(void)
 {
-    return s_initialized && s_connected;
+    return s_wifi_ctx.initialized && s_wifi_ctx.connected;
 }
 
 /* ========================================================================
@@ -429,38 +425,38 @@ bool wifi_is_connected(void)
 esp_err_t wifi_get_config(char *ssid, size_t ssid_len,
                           char *password, size_t pwd_len)
 {
-    if (!s_initialized || !ssid || !password || ssid_len == 0 || pwd_len == 0) {
+    if (!s_wifi_ctx.initialized || !ssid || !password || ssid_len == 0 || pwd_len == 0) {
         return ESP_ERR_INVALID_ARG;
     }
 
-    strncpy(ssid, s_saved_ssid, ssid_len - 1);
+    strncpy(ssid, s_wifi_ctx.saved_ssid, ssid_len - 1);
     ssid[ssid_len - 1] = '\0';
-    strncpy(password, s_saved_password, pwd_len - 1);
+    strncpy(password, s_wifi_ctx.saved_password, pwd_len - 1);
     password[pwd_len - 1] = '\0';
     return ESP_OK;
 }
 
 esp_err_t wifi_forget(const char *ssid)
 {
-    if (!s_initialized) return ESP_ERR_INVALID_STATE;
+    if (!s_wifi_ctx.initialized) return ESP_ERR_INVALID_STATE;
     if (!ssid || ssid[0] == '\0') return ESP_ERR_INVALID_ARG;
 
     /* 正连着这个才需要断开；忘记一个后台网络不该踢掉当前连接 */
-    if (s_connected && strcmp(s_cached_info.ssid, ssid) == 0) {
+    if (s_wifi_ctx.connected && strcmp(s_wifi_ctx.cached_info.ssid, ssid) == 0) {
         wifi_disconnect();
     }
 
     wifi_store_remove(ssid);
 
     /* RAM 缓存指的就是这条的话，换成剩下里最近用过的 */
-    if (strcmp(s_saved_ssid, ssid) == 0) {
+    if (strcmp(s_wifi_ctx.saved_ssid, ssid) == 0) {
         const wifi_cred_t *c = wifi_store_most_recent();
         if (c) {
-            strncpy(s_saved_ssid, c->ssid, sizeof(s_saved_ssid) - 1);
-            strncpy(s_saved_password, c->password, sizeof(s_saved_password) - 1);
+            strncpy(s_wifi_ctx.saved_ssid, c->ssid, sizeof(s_wifi_ctx.saved_ssid) - 1);
+            strncpy(s_wifi_ctx.saved_password, c->password, sizeof(s_wifi_ctx.saved_password) - 1);
         } else {
-            s_saved_ssid[0]     = '\0';
-            s_saved_password[0] = '\0';
+            s_wifi_ctx.saved_ssid[0]     = '\0';
+            s_wifi_ctx.saved_password[0] = '\0';
         }
     }
     return ESP_OK;
@@ -472,10 +468,10 @@ esp_err_t wifi_set_config(const char *ssid, const char *password)
         return ESP_ERR_INVALID_ARG;
     }
 
-    strncpy(s_saved_ssid, ssid, sizeof(s_saved_ssid) - 1);
-    strncpy(s_saved_password, password, sizeof(s_saved_password) - 1);
-    s_saved_ssid[sizeof(s_saved_ssid) - 1] = '\0';
-    s_saved_password[sizeof(s_saved_password) - 1] = '\0';
+    strncpy(s_wifi_ctx.saved_ssid, ssid, sizeof(s_wifi_ctx.saved_ssid) - 1);
+    strncpy(s_wifi_ctx.saved_password, password, sizeof(s_wifi_ctx.saved_password) - 1);
+    s_wifi_ctx.saved_ssid[sizeof(s_wifi_ctx.saved_ssid) - 1] = '\0';
+    s_wifi_ctx.saved_password[sizeof(s_wifi_ctx.saved_password) - 1] = '\0';
     ESP_LOGI(TAG, "Credentials saved for \"%s\" (call wifi_reconnect() to use)", ssid);
     return ESP_OK;
 }
@@ -486,7 +482,7 @@ esp_err_t wifi_set_config(const char *ssid, const char *password)
 
 esp_err_t wifi_set_power_save(wifi_ps_type_t mode)
 {
-    if (!s_initialized) {
+    if (!s_wifi_ctx.initialized) {
         ESP_LOGE(TAG, "Call wifi_manager_init() first");
         return ESP_ERR_INVALID_STATE;
     }
@@ -503,8 +499,8 @@ esp_err_t wifi_set_power_save(wifi_ps_type_t mode)
 void wifi_set_callbacks(wifi_connected_cb_t on_connected,
                         wifi_disconnected_cb_t on_disconnected)
 {
-    s_on_connected    = on_connected;
-    s_on_disconnected = on_disconnected;
+    s_wifi_ctx.on_connected    = on_connected;
+    s_wifi_ctx.on_disconnected = on_disconnected;
 }
 
 /* ========================================================================
@@ -513,7 +509,7 @@ void wifi_set_callbacks(wifi_connected_cb_t on_connected,
 
 static esp_err_t connect_internal(const char *ssid, const char *password)
 {
-    xEventGroupClearBits(s_event_group,
+    xEventGroupClearBits(s_wifi_ctx.event_group,
                          WIFI_CONNECTED_BIT | WIFI_DISCONNECTED_BIT);
 
     wifi_config_t cfg = { 0 };
@@ -534,14 +530,14 @@ static esp_err_t connect_internal(const char *ssid, const char *password)
 static esp_err_t wait_for_connection(void)
 {
     EventBits_t bits = xEventGroupWaitBits(
-        s_event_group,
+        s_wifi_ctx.event_group,
         WIFI_CONNECTED_BIT | WIFI_DISCONNECTED_BIT,
         pdTRUE,   /* clear on exit */
         pdFALSE,  /* wait for ANY bit */
         pdMS_TO_TICKS(WIFI_CONNECT_TIMEOUT_MS));
 
     if (bits & WIFI_CONNECTED_BIT) {
-        ESP_LOGI(TAG, "Connected — IP: %s", s_cached_info.ip);
+        ESP_LOGI(TAG, "Connected — IP: %s", s_wifi_ctx.cached_info.ip);
         return ESP_OK;
     }
     if (bits & WIFI_DISCONNECTED_BIT) {
@@ -555,35 +551,35 @@ static esp_err_t wait_for_connection(void)
 
 static void update_cached_info(void)
 {
-    memset(&s_cached_info, 0, sizeof(s_cached_info));
+    memset(&s_wifi_ctx.cached_info, 0, sizeof(s_wifi_ctx.cached_info));
 
     wifi_config_t cfg;
     if (esp_wifi_get_config(WIFI_IF_STA, &cfg) == ESP_OK) {
-        strncpy(s_cached_info.ssid, (const char *)cfg.sta.ssid,
-                sizeof(s_cached_info.ssid) - 1);
+        strncpy(s_wifi_ctx.cached_info.ssid, (const char *)cfg.sta.ssid,
+                sizeof(s_wifi_ctx.cached_info.ssid) - 1);
     }
 
     esp_netif_ip_info_t ip_info;
-    if (s_netif_sta && esp_netif_get_ip_info(s_netif_sta, &ip_info) == ESP_OK) {
-        snprintf(s_cached_info.ip, sizeof(s_cached_info.ip),
+    if (s_wifi_ctx.netif_sta && esp_netif_get_ip_info(s_wifi_ctx.netif_sta, &ip_info) == ESP_OK) {
+        snprintf(s_wifi_ctx.cached_info.ip, sizeof(s_wifi_ctx.cached_info.ip),
                  IPSTR, IP2STR(&ip_info.ip));
     }
 
     wifi_ap_record_t ap_info;
     if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
-        s_cached_info.rssi    = ap_info.rssi;
-        s_cached_info.channel = ap_info.primary;
-        snprintf(s_cached_info.bssid, sizeof(s_cached_info.bssid),
+        s_wifi_ctx.cached_info.rssi    = ap_info.rssi;
+        s_wifi_ctx.cached_info.channel = ap_info.primary;
+        snprintf(s_wifi_ctx.cached_info.bssid, sizeof(s_wifi_ctx.cached_info.bssid),
                  "%02X:%02X:%02X:%02X:%02X:%02X",
                  ap_info.bssid[0], ap_info.bssid[1], ap_info.bssid[2],
                  ap_info.bssid[3], ap_info.bssid[4], ap_info.bssid[5]);
-        s_cached_info.auth_mode = ap_info.authmode;
+        s_wifi_ctx.cached_info.auth_mode = ap_info.authmode;
     }
 }
 
 static void clear_cached_info(void)
 {
-    memset(&s_cached_info, 0, sizeof(s_cached_info));
+    memset(&s_wifi_ctx.cached_info, 0, sizeof(s_wifi_ctx.cached_info));
 }
 
 /* ========================================================================
@@ -603,7 +599,7 @@ static void event_handler(void *arg, esp_event_base_t event_base,
 
         case WIFI_EVENT_STA_STOP:
             ESP_LOGI(TAG, "STA stopped");
-            xEventGroupSetBits(s_event_group, WIFI_STOPPED_BIT);
+            xEventGroupSetBits(s_wifi_ctx.event_group, WIFI_STOPPED_BIT);
             break;
 
         case WIFI_EVENT_STA_CONNECTED:
@@ -614,18 +610,18 @@ static void event_handler(void *arg, esp_event_base_t event_base,
             wifi_event_sta_disconnected_t *ev =
                 (wifi_event_sta_disconnected_t *)event_data;
             ESP_LOGW(TAG, "Disconnected (reason=%d)", ev->reason);
-            s_connected = false;
+            s_wifi_ctx.connected = false;
             clear_cached_info();
-            xEventGroupSetBits(s_event_group, WIFI_DISCONNECTED_BIT);
-            if (s_on_disconnected) {
-                s_on_disconnected();
+            xEventGroupSetBits(s_wifi_ctx.event_group, WIFI_DISCONNECTED_BIT);
+            if (s_wifi_ctx.on_disconnected) {
+                s_wifi_ctx.on_disconnected();
             }
             break;
         }
 
         case WIFI_EVENT_SCAN_DONE:
             ESP_LOGI(TAG, "Scan done");
-            xEventGroupSetBits(s_event_group, WIFI_SCAN_DONE_BIT);
+            xEventGroupSetBits(s_wifi_ctx.event_group, WIFI_SCAN_DONE_BIT);
             break;
 
         default:
@@ -636,11 +632,11 @@ static void event_handler(void *arg, esp_event_base_t event_base,
 
         ip_event_got_ip_t *ev = (ip_event_got_ip_t *)event_data;
         ESP_LOGI(TAG, "Got IP: " IPSTR, IP2STR(&ev->ip_info.ip));
-        s_connected = true;
+        s_wifi_ctx.connected = true;
         update_cached_info();
-        xEventGroupSetBits(s_event_group, WIFI_CONNECTED_BIT);
-        if (s_on_connected) {
-            s_on_connected(&s_cached_info);
+        xEventGroupSetBits(s_wifi_ctx.event_group, WIFI_CONNECTED_BIT);
+        if (s_wifi_ctx.on_connected) {
+            s_wifi_ctx.on_connected(&s_wifi_ctx.cached_info);
         }
     }
 }
