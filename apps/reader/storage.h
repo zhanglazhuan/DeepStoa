@@ -34,5 +34,7 @@ void reader_storage_save_config(const ReaderAppConfig *cfg);
 
 // 从 FlashDB 加载书库列表
 void reader_storage_load_library(struct ReaderModel *model);
+uint32_t reader_storage_load_position(const char *book_path);
+void reader_storage_save_position(const char *book_path, uint32_t page);
 
 #endif

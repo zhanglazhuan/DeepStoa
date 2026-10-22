@@ -26,13 +26,17 @@
 #include "launcher.h"
 #include "settings_app.h"
 #include "clock_app.h"
-#include "app.h"        // chatbot
+#include "../apps/chat/app.h"
 #include "todolist_app.h"
 #include "anki_app.h"
 #include "calendar_app.h"
 #include "news_app.h"
 #include "player_app.h"
 #include "reader_app.h"
+#include "../apps/tovo/app.h"
+#include "../apps/pomodoro/app.h"
+#include "../apps/mistakebook/app.h"
+#include "../apps/weather/app.h"
 #include "ft6336.h"
 #include "lv_status_bar.h"
 #include "lv_alarm_alert.h"
@@ -135,13 +139,17 @@ void app_main(void)
     ESP_LOGI(TAG, "Register apps...");
     settings_init();
     clock_app_init();
-    chatbot_init();
+    chat_init();
     todolist_init();
     anki_init();
     calendar_init();
     news_app_init();
     player_init();
     reader_init();
+    tovo_init();
+    mistakebook_init();
+    pomodoro_init();
+    weather_init();
 
     // ---- 6b. Background update check (silent; result shows up in Settings) ----
     settings_model_update_t upd;

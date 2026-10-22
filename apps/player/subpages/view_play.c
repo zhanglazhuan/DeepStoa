@@ -125,6 +125,7 @@ static void notify_state(struct PlayerApp *app)
 
     if (!epd_region_is_active()) epd_region_begin(lv_screen_active());
     else                         epd_region_flush_obj(ctx->btn_play);  /* ← 只推图标 */
+    if (audio_service_state() == AUDIO_STATE_STOPPED) notify_progress(app, true);
 }
 
 /* ── 局部刷新：播放模式 + 音量 ────────────────────────────────────── */
@@ -204,6 +205,7 @@ static void toggle_cb(lv_event_t *e)
 
 static void prev_cb(lv_event_t *e) { (void)e; audio_service_prev(); }
 static void next_cb(lv_event_t *e) { (void)e; audio_service_next(); }
+static void stop_cb(lv_event_t *e) { (void)e; audio_service_stop(); }
 
 static void seek_back_cb(lv_event_t *e)
 {
@@ -471,7 +473,7 @@ static lv_obj_t* build_player_play_page(PlayerApp* app, void* user_data)
     make_ctrl_btn(seek_row, LV_SYMBOL_LEFT " 15s",  seek_back_cb, app, 150);
     make_ctrl_btn(seek_row, "15s " LV_SYMBOL_RIGHT, seek_fwd_cb,  app, 150);
 
-    /* ── 上一首 / 播放暂停 / 下一首 ─────────────────────────────── */
+    /* ── 上一首 / 播放暂停 / 下一首 / 停止 ─────────────────────── */
     lv_obj_t *ctrl_row = lv_obj_create(page.container);
     lv_obj_remove_style_all(ctrl_row);
     lv_obj_set_width(ctrl_row, LV_PCT(100));
@@ -480,12 +482,12 @@ static lv_obj_t* build_player_play_page(PlayerApp* app, void* user_data)
     lv_obj_set_flex_align(ctrl_row, LV_FLEX_ALIGN_SPACE_AROUND,
                           LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
-    make_ctrl_btn(ctrl_row, LV_SYMBOL_PREV, prev_cb, app, 90);
+    make_ctrl_btn(ctrl_row, LV_SYMBOL_PREV, prev_cb, app, 80);
 
     /* 局部刷新窗口 2 */
     ctx->btn_play = lv_btn_create(ctrl_row);
     ui_style_set_btn_primary(ctx->btn_play);
-    lv_obj_set_size(ctx->btn_play, 110, 68);
+    lv_obj_set_size(ctx->btn_play, 104, 68);
     lv_obj_set_style_radius(ctx->btn_play, 2, 0);
     ctx->lbl_btn_play = lv_label_create(ctx->btn_play);
     lv_label_set_text(ctx->lbl_btn_play,
@@ -494,7 +496,8 @@ static lv_obj_t* build_player_play_page(PlayerApp* app, void* user_data)
     lv_obj_center(ctx->lbl_btn_play);
     lv_obj_add_event_cb(ctx->btn_play, toggle_cb, LV_EVENT_CLICKED, app);
 
-    make_ctrl_btn(ctrl_row, LV_SYMBOL_NEXT, next_cb, app, 90);
+    make_ctrl_btn(ctrl_row, LV_SYMBOL_NEXT, next_cb, app, 80);
+    make_ctrl_btn(ctrl_row, LV_SYMBOL_STOP, stop_cb, app, 80);
 
     /* ── 局部刷新窗口 3：播放模式 + 音量 ─────────────────────────
      * 两者放同一个容器，共用一个刷新窗口，不用在两个对象间来回切。 */

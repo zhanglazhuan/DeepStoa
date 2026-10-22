@@ -41,7 +41,7 @@ typedef struct {
 static status_bar_t g_status_bar = {0};
 
 /* ---------------- 数据源 ----------------
- * 时间来自 system/timeservice（RTC + SNTP）。没对上时显示 --:--，
+ * 时间来自 system/services/time（RTC + SNTP）。没对上时显示 --:--，
  * 宁可让用户看到"还不知道几点"，也不要显示一个看起来像真的假时间。 */
 static void get_time_text(char * buf, size_t len) {
     if (!time_service_is_synced()) {
@@ -70,7 +70,7 @@ static bool mock_is_charging(void) {
 }
 
 /* ---------------- 后台播放指示 ----------------
- * 播放会话是系统级的（system/audio），退出播放器 app 音乐还在放。
+ * 播放会话是系统级的（system/services/audio），退出播放器 app 音乐还在放。
  * 那就必须有个全局可见的提示，否则用户在别的界面里完全不知道在放什么。
  * 这里只做提示，不做控制 —— 从状态栏拉起 app 需要把 launcher 的
  * close_cb/root/group 透传进来，为一个图标做这种跨层耦合不划算。

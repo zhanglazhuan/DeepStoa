@@ -1,0 +1,11 @@
+menu "PhotoPaint I2C wiring"
+    config PHOTOPAINT_ES7210_SWAPPED_I2C
+        bool "ES7210 CDATA/CCLK are crossed on GPIO17/18"
+        depends on BOARD_TYPE_WAVESHARE_S3_PHOTOPAINT_V2
+        default n
+        help
+            Assembly workaround for this PhotoPaint V2 board: route I2C address
+            0x40 with SDA=18/SCL=17 and restore SDA=17/SCL=18 after each transfer.
+            All blocking master calls are serialized. Asynchronous transfers
+            on the shared bus are not supported. Disable after fixing wiring.
+endmenu

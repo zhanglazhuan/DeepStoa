@@ -65,12 +65,6 @@ typedef struct {
     int auto_sleep_minutes;
 } settings_model_battery_t;
 
-// ── Storage ────────────────────────────────────────────────────────────
-typedef struct {
-    int storage_used_gb;
-    int storage_total_gb;
-} settings_model_storage_t;
-
 // ── Update (OTA) ───────────────────────────────────────────────────────
 typedef struct {
     int  auto_check_enabled;   // 开机后台自动查一次更新
@@ -90,7 +84,6 @@ typedef struct SettingsModel {
     settings_model_wallpaper_t wallpaper;
     settings_model_datetime_t  datetime;
     settings_model_battery_t   battery;
-    settings_model_storage_t   storage;
     settings_model_security_t  security;
     settings_model_update_t    update;
     settings_model_wifi_t      wifi;

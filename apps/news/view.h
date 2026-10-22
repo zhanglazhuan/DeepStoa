@@ -34,10 +34,15 @@ typedef struct NewsListCtx {
 } NewsListCtx;
 
 /* ── 详情页 ──────────────────────────────────────────────────
- * 标题和 meta 建好就不变，只有正文区随状态重建。 */
+ * 正文最多 4095 字节。即使全是换行，512 页也足够覆盖一屏至少 8 行的情况。 */
+#define NEWS_DETAIL_MAX_PAGES 512
 typedef struct NewsDetailCtx {
-    lv_obj_t *scroll;
     lv_obj_t *body_slot;
+    lv_obj_t *body_label;
+    lv_obj_t *page_label;
+    uint16_t page_offsets[NEWS_DETAIL_MAX_PAGES + 1];
+    uint16_t page_count;
+    uint16_t page_index;
 } NewsDetailCtx;
 
 /* ── view ────────────────────────────────────────────────────── */

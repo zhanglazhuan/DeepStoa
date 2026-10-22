@@ -3,7 +3,7 @@
     from server.ota.api import ota_bp
     app.register_blueprint(ota_bp)
 
-接口一览（端侧实现见 system/ota/ota.c）:
+接口一览（端侧实现见 system/services/ota/ota.c）:
 
     GET  /api/ota/check?version=&channel=&device=   查更新，返回 manifest
     GET  /api/ota/download?version=                 下固件（支持 Range 续传）

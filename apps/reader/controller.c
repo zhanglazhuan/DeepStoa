@@ -5,6 +5,7 @@
 #include "controller.h"
 #include "model.h"
 #include "view.h"
+#include "lv_toast.h"
 
 static const char *TAG = "reader_ctrl";
 
@@ -32,6 +33,8 @@ void reader_controller_on_book_clicked(lv_event_t *e) {
         /* 必须用宏：只有宏会压返回栈，Reading 页的返回键
          * (reader_controller_on_back_to_library → navigate_pop) 才 pop 得回来 */
         PAGE_NAVIGATE_TO(app, PAGE_READING, NULL);
+    } else {
+        lv_toast_show("Could not open book", 2500);
     }
 }
 
@@ -70,5 +73,6 @@ void reader_controller_on_font_toggle_clicked(lv_event_t *e) {
 
 void reader_controller_on_back_to_library(lv_event_t *e) {
     ReaderApp *app = &g_reader_app;
+    reader_view_release_media(app);
     page_navigator_navigate_pop(&app->view->page_nav, app);
 }

@@ -298,6 +298,17 @@ void settings_view_wifi_update_connected(struct SettingsApp *app)
 
     settings_model_wifi_t *w = &app->model->wifi;
 
+    if (ctx->connection_status) {
+        wifi_info_t live = {0};
+        bool connected = wifi_get_info(&live) == ESP_OK && live.is_connected;
+        if (connected)
+            lv_label_set_text_fmt(ctx->connection_status, "Connected: %s", live.ssid);
+        else if (!w->enabled) lv_label_set_text(ctx->connection_status, "Wi-Fi off");
+        else if (w->state == WIFI_UI_CONNECTING)
+            lv_label_set_text(ctx->connection_status, "Connecting...");
+        else lv_label_set_text(ctx->connection_status, "Wi-Fi disconnected");
+    }
+
     if (!w->enabled || w->state == WIFI_UI_DISCONNECTED) {
         lv_obj_add_flag(ctx->connected_row, LV_OBJ_FLAG_HIDDEN);
         return;
@@ -423,8 +434,8 @@ static void pwd_show_toggle_cb(lv_event_t *e)
     ViewWifiPwdCtx *ctx = (ViewWifiPwdCtx *)app->view->page_nav.nav_ctx;
     if (!ctx) return;
 
-    lv_obj_t *btn = lv_event_get_target(e);
-    bool show = lv_obj_has_state(btn, LV_STATE_CHECKED);
+    lv_obj_t *checkbox = lv_event_get_target(e);
+    bool show = lv_obj_has_state(checkbox, LV_STATE_CHECKED);
     lv_textarea_set_password_mode(ctx->pwd_input, !show);
     epd_region_flush_obj(ctx->pwd_input);
 }
@@ -466,21 +477,20 @@ static lv_obj_t *build_wifi_password_page(struct SettingsApp *app)
     /* 只设宽度：one_line 已经把高度设成 LV_SIZE_CONTENT，
      * 再写死一个小于 line_height + 2*(pad+border) 的值会让文字上下跳。 */
     lv_obj_set_width(ctx->pwd_input, LV_PCT(100));
+    lv_obj_set_style_border_width(ctx->pwd_input, 2, LV_PART_MAIN);
+    lv_obj_set_style_border_color(ctx->pwd_input, lv_color_black(), LV_PART_MAIN);
+    lv_obj_set_style_radius(ctx->pwd_input, 2, LV_PART_MAIN);
     lv_obj_set_scrollbar_mode(ctx->pwd_input, LV_SCROLLBAR_MODE_OFF);
     lv_obj_set_style_opa(ctx->pwd_input, LV_OPA_TRANSP, LV_PART_CURSOR);
+    lv_obj_set_style_bg_opa(ctx->pwd_input, LV_OPA_TRANSP, LV_PART_CURSOR);
+    lv_obj_set_style_border_opa(ctx->pwd_input, LV_OPA_TRANSP, LV_PART_CURSOR);
     lv_obj_set_style_anim_duration(ctx->pwd_input, 0, LV_PART_CURSOR);
     lv_obj_add_event_cb(ctx->pwd_input, pwd_ta_event_cb, LV_EVENT_FOCUSED, app);
     lv_obj_add_event_cb(ctx->pwd_input, pwd_ta_event_cb, LV_EVENT_CLICKED, app);
 
-    lv_obj_t *show_btn = lv_btn_create(cont);
-    ui_style_set_btn_secondary(show_btn);
-    lv_obj_add_flag(show_btn, LV_OBJ_FLAG_CHECKABLE);
-    lv_obj_set_size(show_btn, 140, 44);
-    lv_obj_set_style_radius(show_btn, 2, 0);
-    lv_obj_t *sl = lv_label_create(show_btn);
-    lv_label_set_text(sl, LV_SYMBOL_EYE_OPEN "  Show password");
-    lv_obj_center(sl);
-    lv_obj_add_event_cb(show_btn, pwd_show_toggle_cb, LV_EVENT_VALUE_CHANGED, app);
+    lv_obj_t *show_checkbox = lv_checkbox_create(cont);
+    lv_checkbox_set_text(show_checkbox, "Show password");
+    lv_obj_add_event_cb(show_checkbox, pwd_show_toggle_cb, LV_EVENT_VALUE_CHANGED, app);
 
     lv_obj_t *btn_row = lv_obj_create(cont);
     lv_obj_remove_style_all(btn_row);
@@ -585,6 +595,11 @@ static lv_obj_t *build_wifi_page(struct SettingsApp *app)
     lv_obj_set_style_pad_top(ctx->status_lbl, 8, 0);
     lv_label_set_text(ctx->status_lbl, "");
     lv_obj_add_flag(ctx->status_lbl, LV_OBJ_FLAG_HIDDEN);
+
+    ctx->connection_status = lv_label_create(cont);
+    lv_obj_set_width(ctx->connection_status, LV_PCT(100));
+    lv_obj_set_style_pad_hor(ctx->connection_status, 12, 0);
+    lv_label_set_text(ctx->connection_status, "Wi-Fi disconnected");
 
     /* 当前连接。NomadCast 用 0xE8F5E9 的浅绿底把它和普通行区分开，
      * 1bit 屏上没有这种中间色，改用 2px 描边卡片 —— 和本工程其他地方

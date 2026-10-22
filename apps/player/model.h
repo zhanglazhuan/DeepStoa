@@ -7,7 +7,7 @@
 #include "service/player_library.h"
 
 /* 注意：播放列表、播放状态、播放位置都不在这里 —— 它们属于
- * system/audio 的 audio_service，比这个 app 活得久。
+ * system/services/audio 的 audio_service，比这个 app 活得久。
  * 本 model 只负责"曲目库"这个 app 生命周期内的东西。 */
 
 #define MAX_TRACKS      PLAYER_MAX_TRACKS

@@ -46,8 +46,8 @@ FIREWALL_RULE = "DeepStoa Dev Server"
 # 固件里需要和本服务对齐的常量。改了 --port 或换了热点方案，这几处要跟着改。
 FIRMWARE_REFS = [
     ("apps/news/service/news_svc_http.c", "NEWS_API_BASE", "{base}"),
-    ("system/ota/ota.h", "OTA_DEFAULT_MANIFEST_URL", "{base}/api/ota/check"),
-    ("system/logs/log_uploader.c", "PODCAST_SERVER", "{base}"),
+    ("system/services/ota/ota.h", "OTA_DEFAULT_MANIFEST_URL", "{base}/api/ota/check"),
+    ("system/services/logs/log_uploader.c", "PODCAST_SERVER", "{base}"),
 ]
 
 

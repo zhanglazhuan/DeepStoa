@@ -2,10 +2,10 @@
  * @file view_list.c
  * @brief 曲目列表页
  *
- * - 曲目来自 PLAYER_MUSIC_DIR，由 player_library 扫描（真实 FS 或 mock）
+ * - 曲目来自 PLAYER_MUSIC_DIR，由 player_library 扫描 SD 卡
  * - 每行左侧 checkbox 多选，底部「加入播放列表」批量入队
  * - 每行右侧垃圾桶删除，带二次确认
- * - 不支持的格式仍然列出来（灰显 + 标记），点开时弹窗说明，而不是直接隐藏
+ * - MP3 仍然列出来并标为不支持，点开时弹窗说明
  */
 
 #include <stdio.h>
@@ -22,6 +22,8 @@
 #include "../controller.h"
 #include "../service/player_library.h"
 #include "audio_service.h"
+#include "fs_control.h"
+#include "sd_control.h"
 
 static const char *TAG = "player_view_list";
 
@@ -165,7 +167,7 @@ static void enqueue_cb(lv_event_t *e)
 
     if (added == 0 && skipped > 0) {
         make_dialog("All selected files are unsupported, nothing was queued.\n"
-                    "Supported formats: .mp3 and .wav.", NULL, NULL, NULL);
+                    "Supported playback format: .wav.", NULL, NULL, NULL);
     } else if (skipped > 0) {
         char msg[160];
         snprintf(msg, sizeof(msg),
@@ -192,7 +194,7 @@ static void track_click_cb(lv_event_t *e)
     if (err == AUDIO_ERR_FORMAT) {
         char msg[224];
         snprintf(msg, sizeof(msg),
-                 "\"%s\" is not a supported audio format.\nSupported formats: .mp3 and .wav.",
+                 "\"%s\" is not a supported audio format.\nSupported playback format: .wav.",
                  app->model->tracks[idx].title);
         make_dialog(msg, NULL, NULL, NULL);
         return;
@@ -223,7 +225,7 @@ static void rescan_cb(lv_event_t *e)
     PlayerApp *app = lv_event_get_user_data(e);
     player_controller_rescan();
     rebuild(app);
-    lv_toast_show(player_library_using_mock() ? "Rescanned (mock data)" : "Rescanned", 1500);
+    lv_toast_show("Rescanned", 1500);
 }
 
 static void fmt_size(uint32_t bytes, char *out, size_t n)
@@ -243,8 +245,14 @@ static void rebuild(PlayerApp *app)
 
     if (m->track_count == 0) {
         lv_obj_t *empty = lv_label_create(s_ctx->list_container);
-        lv_label_set_text_fmt(empty, "No tracks in %s\nPut .mp3 / .wav files in this folder",
-                              PLAYER_MUSIC_DIR);
+        if (!fs_control_is_mounted()) {
+            lv_label_set_text(empty, "SD card is not mounted");
+        } else if (!sd_control_is_ready(PLAYER_MUSIC_DIR)) {
+            lv_label_set_text_fmt(empty, "No %s directory", PLAYER_MUSIC_DIR);
+        } else {
+            lv_label_set_text_fmt(empty, "No audio files in %s\nAdd .wav or .mp3 files",
+                                  PLAYER_MUSIC_DIR);
+        }
         lv_label_set_long_mode(empty, LV_LABEL_LONG_WRAP);
         lv_obj_set_width(empty, LV_PCT(100));
         lv_obj_set_style_text_align(empty, LV_TEXT_ALIGN_CENTER, 0);

@@ -10,6 +10,7 @@
 #include "controller.h"
 #include "model.h"
 #include "storage.h"
+#include "lv_toast.h"
 
 static const char *TAG = "reader_app";
 
@@ -21,8 +22,11 @@ static void reader_app_start(lv_obj_t *root, lv_group_t *group) {
     ESP_LOGI(TAG, "into reader_app_start");
 
     reader_model_init(&g_reader_app);
+    if (!g_reader_app.model) goto failed;
     reader_controller_init(&g_reader_app);
+    if (!g_reader_app.controller) goto failed;
     reader_view_init(&g_reader_app);
+    if (!g_reader_app.view) goto failed;
 
     g_reader_app.controller->model = g_reader_app.model;
     g_reader_app.controller->view = g_reader_app.view;
@@ -30,6 +34,14 @@ static void reader_app_start(lv_obj_t *root, lv_group_t *group) {
     page_navigator_navigate_to(&g_reader_app.view->page_nav, &g_reader_app, PAGE_LIBRARY, NULL);
 
     ESP_LOGI(TAG, "reader_app_start end");
+    return;
+
+failed:
+    ESP_LOGE(TAG, "Reader could not allocate app state");
+    lv_toast_show("Reader could not start", 2500);
+    reader_view_deinit(&g_reader_app);
+    reader_controller_deinit(&g_reader_app);
+    reader_model_deinit(&g_reader_app);
 }
 
 static void reader_app_stop(void) {
@@ -43,6 +55,8 @@ static void reader_app_stop(void) {
 }
 
 static bool reader_app_back(void) {
+    if (!g_reader_app.view) return false;
+    reader_view_release_media(&g_reader_app);
     return page_navigator_navigate_pop(&g_reader_app.view->page_nav, &g_reader_app);
 }
 

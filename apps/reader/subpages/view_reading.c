@@ -1,6 +1,7 @@
 
 #include <lvgl.h>
 #include <stdio.h>
+#include <string.h>
 #include "esp_log.h"
 
 #include "lv_page.h"
@@ -11,7 +12,51 @@
 #include "../controller.h"
 #include "../model.h"
 
-static const char *TAG = "reader_view_reading";
+static void toc_close_cb(lv_event_t *e) {
+    ReaderApp *app = lv_event_get_user_data(e);
+    if (app->view->ctx.toc_panel && lv_obj_is_valid(app->view->ctx.toc_panel))
+        lv_obj_delete(app->view->ctx.toc_panel);
+    app->view->ctx.toc_panel = NULL;
+}
+
+static void toc_item_cb(lv_event_t *e) {
+    ReaderApp *app = lv_event_get_user_data(e);
+    int index = (int)(intptr_t)lv_obj_get_user_data(lv_event_get_current_target(e));
+    if (reader_model_jump_to_toc(app->model, index)) {
+        toc_close_cb(e);
+        reader_view_refresh_read_page(app);
+    }
+}
+
+static void toc_open_cb(lv_event_t *e) {
+    ReaderApp *app = lv_event_get_user_data(e);
+    if (!reader_model_has_toc(app->model)) return;
+    if (app->view->ctx.toc_panel) toc_close_cb(e);
+    lv_obj_t *panel = lv_obj_create(lv_screen_active());
+    app->view->ctx.toc_panel = panel;
+    lv_obj_set_size(panel, LV_PCT(90), LV_PCT(85));
+    lv_obj_center(panel);
+    lv_obj_set_flex_flow(panel, LV_FLEX_FLOW_COLUMN);
+    lv_obj_t *close = lv_btn_create(panel);
+    lv_label_set_text(lv_label_create(close), "Close contents");
+    lv_obj_add_event_cb(close, toc_close_cb, LV_EVENT_CLICKED, app);
+    lv_obj_t *list = lv_obj_create(panel);
+    lv_obj_set_width(list, LV_PCT(100));
+    lv_obj_set_flex_grow(list, 1);
+    lv_obj_set_flex_flow(list, LV_FLEX_FLOW_COLUMN);
+    int count = reader_model_toc_count(app->model);
+    if (count > 256) count = 256;
+    for (int i = 0; i < count; ++i) {
+        char title[160];
+        if (!reader_model_toc_title(i, title, sizeof(title)))
+            snprintf(title, sizeof(title), "Chapter %d", i + 1);
+        lv_obj_t *row = lv_btn_create(list);
+        lv_obj_set_width(row, LV_PCT(100));
+        lv_obj_set_user_data(row, (void *)(intptr_t)i);
+        lv_label_set_text(lv_label_create(row), title);
+        lv_obj_add_event_cb(row, toc_item_cb, LV_EVENT_CLICKED, app);
+    }
+}
 
 // --- 菜单呼出/隐藏回调函数 ---
 static void toggle_menu_cb(lv_event_t * e) {
@@ -82,7 +127,6 @@ static void line_space_slider_cb(lv_event_t * e) {
 
 // --- 点击字体按钮呼出 Bottom Sheet ---
 static void font_settings_btn_cb(lv_event_t * e) {
-    ReaderApp * app = lv_event_get_user_data(e);
 
     // 1. 接收正确的类型：lv_bottom_sheet_t *
     lv_bottom_sheet_t * bs = lv_bottom_sheet_create(lv_screen_active());
@@ -230,12 +274,19 @@ static lv_obj_t* build_reading_page(ReaderApp* app, void* user_data) {
 
     // 进度条 (Slider)
     lv_obj_t *slider = lv_slider_create(bottom_bar);
-    lv_obj_set_size(slider, LV_PCT(50), 10);
+    lv_obj_set_size(slider, LV_PCT(35), 10);
     lv_obj_align(slider, LV_ALIGN_CENTER, 0, 0);
     lv_slider_set_range(slider, 0, 100);
     lv_obj_clear_flag(slider, LV_OBJ_FLAG_GESTURE_BUBBLE);
     lv_obj_add_event_cb(slider, reader_controller_on_read_slider_changed, LV_EVENT_VALUE_CHANGED, app);
     app->view->ctx.progress_slider = slider;
+
+    lv_obj_t *toc = lv_btn_create(bottom_bar);
+    lv_obj_set_size(toc, 60, 34);
+    lv_obj_align(toc, LV_ALIGN_LEFT_MID, 85, 0);
+    lv_label_set_text(lv_label_create(toc), "TOC");
+    lv_obj_add_event_cb(toc, toc_open_cb, LV_EVENT_CLICKED, app);
+    if (!reader_model_has_toc(app->model)) lv_obj_add_flag(toc, LV_OBJ_FLAG_HIDDEN);
 
     // 进度百分比文本
     app->view->ctx.progress_label = lv_label_create(bottom_bar);
@@ -272,19 +323,40 @@ void reader_view_refresh_read_page(ReaderApp *app) {
     reader_model_read_page(m);
     lv_label_set_text(app->view->ctx.content_label, m->page_buffer);
 
-    // 3. 计算本页实际渲染了多少字符 (用于精确翻页)
-    // 注意：LVGL 没有直接提供获取 CLIP 模式下截断位置的 API。
-    // 在工程中，一般通过估算 (容器高度 / 行高 * 每行字符数)，或者强制使用定制的文本断行引擎。
-    // 这里做基础估算，防止死循环。
     app->view->ctx.last_rendered_bytes = strlen(m->page_buffer);
-    // 假设一页最多显示 500 字节，如果超了说明被 Clip 了
-    if (app->view->ctx.last_rendered_bytes > 500) {
-        app->view->ctx.last_rendered_bytes = 500;
+
+    ReaderViewCtx *ctx = &app->view->ctx;
+    if (ctx->image_obj && lv_obj_is_valid(ctx->image_obj)) lv_obj_delete(ctx->image_obj);
+    ctx->image_obj = NULL;
+    if (ctx->image_data) reader_model_free_page_image(ctx->image_data);
+    ctx->image_data = NULL;
+    size_t image_size = 0;
+    if (reader_model_read_page_image(m, &ctx->image_data, &image_size) &&
+        ctx->image_data && image_size > 0) {
+        memset(&ctx->image_desc, 0, sizeof(ctx->image_desc));
+        ctx->image_desc.header.cf = LV_COLOR_FORMAT_RAW;
+        ctx->image_desc.header.w = 1;
+        ctx->image_desc.header.h = 1;
+        ctx->image_desc.data_size = image_size;
+        ctx->image_desc.data = ctx->image_data;
+        lv_obj_set_width(ctx->content_label, LV_PCT(68));
+        ctx->image_obj = lv_image_create(lv_obj_get_parent(ctx->content_label));
+        lv_image_set_src(ctx->image_obj, &ctx->image_desc);
+        lv_obj_set_size(ctx->image_obj, LV_PCT(28), LV_PCT(50));
+        lv_obj_align(ctx->image_obj, LV_ALIGN_TOP_RIGHT, 0, 0);
+    } else {
+        if (ctx->image_data) reader_model_free_page_image(ctx->image_data);
+        ctx->image_data = NULL;
+        lv_obj_set_width(ctx->content_label, LV_PCT(100));
     }
 
     // 4. 更新进度条和文本
     uint8_t pct = reader_model_get_progress_percent(m);
-    lv_slider_set_value(app->view->ctx.progress_slider, pct, LV_ANIM_OFF);
+    if (m->epub_rich) lv_obj_add_flag(ctx->progress_slider, LV_OBJ_FLAG_HIDDEN);
+    else {
+        lv_obj_clear_flag(ctx->progress_slider, LV_OBJ_FLAG_HIDDEN);
+        lv_slider_set_value(ctx->progress_slider, pct, LV_ANIM_OFF);
+    }
 
     char buf[16];
     snprintf(buf, sizeof(buf), "%d%%", pct);
@@ -292,7 +364,8 @@ void reader_view_refresh_read_page(ReaderApp *app) {
 
     // 5. 更新页码展示
     if (app->view->ctx.page_index_label) {
-        snprintf(buf, sizeof(buf), "%lu/%lu", (unsigned long)m->page_index, (unsigned long)m->page_total);
+        if (m->epub_rich) snprintf(buf, sizeof(buf), "EPUB");
+        else snprintf(buf, sizeof(buf), "%lu/%lu", (unsigned long)m->page_index, (unsigned long)m->page_total);
         lv_label_set_text(app->view->ctx.page_index_label, buf);
     }
 }

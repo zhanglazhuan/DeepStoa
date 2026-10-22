@@ -6,8 +6,9 @@
 #include "../view.h"
 #include "../controller.h"
 #include "../model.h"
+#include "lv_floating_button.h"
 
-static const char *TAG = "reader_view_library";
+LV_IMAGE_DECLARE(refresh);
 
 // --- 状态与枚举定义 ---
 // 【修改1】把 LAYOUT_CARD 改名为 LAYOUT_GRID
@@ -19,10 +20,12 @@ static lv_obj_t *book_container = NULL;
 
 // --- 排序回调函数 ---
 static int cmp_time_desc(const void *a, const void *b) {
-    return ((ReaderBookInfo*)b)->open_time - ((ReaderBookInfo*)a)->open_time;
+    uint32_t x = ((ReaderBookInfo*)a)->open_time, y = ((ReaderBookInfo*)b)->open_time;
+    return (y > x) - (y < x);
 }
 static int cmp_time_asc(const void *a, const void *b) {
-    return ((ReaderBookInfo*)a)->open_time - ((ReaderBookInfo*)b)->open_time;
+    uint32_t x = ((ReaderBookInfo*)a)->open_time, y = ((ReaderBookInfo*)b)->open_time;
+    return (x > y) - (x < y);
 }
 static int cmp_az_asc(const void *a, const void *b) {
     return strcmp(((ReaderBookInfo*)a)->title, ((ReaderBookInfo*)b)->title);
@@ -33,8 +36,6 @@ static int cmp_az_desc(const void *a, const void *b) {
 
 // 包装函数：处理书籍点击
 static void book_clicked_wrapper(lv_event_t *e) {
-    lv_obj_t *target = lv_event_get_current_target(e);
-    int idx = (int)(intptr_t)lv_obj_get_user_data(target);
     reader_controller_on_book_clicked(e);
 }
 
@@ -44,9 +45,18 @@ static void draw_books(ReaderApp *app) {
 
     // 1. 清空旧的书籍节点
     lv_obj_clean(book_container);
+    if (app->model->book_count == 0) {
+        lv_obj_t *empty = lv_label_create(book_container);
+        lv_label_set_text(empty, !app->model->storage_ready
+            ? "SD card is not mounted"
+            : app->model->library_available
+                ? "No TXT or EPUB books in /sdcard/books"
+                : "Cannot open /sdcard/books");
+        return;
+    }
 
     // 2. 排序
-    if (app->model->book_count > 0 && app->model->sort_method >= SORT_TIME_DESC && app->model->sort_method <= SORT_AZ_DESC) {
+    if (app->model->book_count > 0 && app->model->sort_method <= SORT_AZ_DESC) {
         int (*cmp_func)(const void*, const void*) = cmp_time_desc;
         switch((lib_sort_t)app->model->sort_method) {
             case SORT_TIME_DESC: cmp_func = cmp_time_desc; break;
@@ -61,6 +71,8 @@ static void draw_books(ReaderApp *app) {
     if (app->model->lib_layout == LAYOUT_LIST) {
         lv_obj_set_flex_flow(book_container, LV_FLEX_FLOW_COLUMN);
         lv_obj_set_flex_align(book_container, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START);
+        lv_obj_set_style_pad_bottom(book_container,
+                                    LV_FLOATING_BUTTON_SIZE + LV_FLOATING_BUTTON_MARGIN, 0);
 
         for (int i = 0; i < app->model->book_count; i++) {
             lv_obj_t *btn = lv_btn_create(book_container);
@@ -83,7 +95,8 @@ static void draw_books(ReaderApp *app) {
         lv_obj_set_flex_align(book_container, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
         lv_obj_set_style_pad_column(book_container, 10, 0);
         lv_obj_set_style_pad_top(book_container, 10, 0);
-        lv_obj_set_style_pad_bottom(book_container, 20, 0);
+        lv_obj_set_style_pad_bottom(book_container,
+                                    LV_FLOATING_BUTTON_SIZE + LV_FLOATING_BUTTON_MARGIN, 0);
         lv_obj_set_style_pad_row(book_container, 20, 0);
 
         for (int i = 0; i < app->model->book_count; i++) {
@@ -104,6 +117,10 @@ static void draw_books(ReaderApp *app) {
             lv_obj_set_user_data(btn, (void*)(intptr_t)i);
             lv_obj_add_event_cb(btn, book_clicked_wrapper, LV_EVENT_CLICKED, app);
         }
+    }
+    if (app->model->book_count == MAX_BOOKS) {
+        lv_obj_t *limit = lv_label_create(book_container);
+        lv_label_set_text(limit, "Showing up to 32 books");
     }
 }
 
@@ -132,6 +149,12 @@ static void sort_dropdown_event_cb(lv_event_t * e) {
     // 同步到 flash
     reader_model_sync_config(app->model);
 
+    draw_books(app);
+}
+
+static void refresh_library_cb(lv_event_t *e) {
+    ReaderApp *app = lv_event_get_user_data(e);
+    reader_model_load_library(app->model);
     draw_books(app);
 }
 
@@ -185,6 +208,9 @@ static lv_obj_t* build_library_page(ReaderApp* app, void* user_data) {
     lv_obj_set_style_bg_opa(book_container, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(book_container, 0, 0);
     lv_obj_add_flag(book_container, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_floating_button_create_image(page.container, &refresh,
+                                    refresh_library_cb, app);
 
     // 3. 初始渲染
     draw_books(app);

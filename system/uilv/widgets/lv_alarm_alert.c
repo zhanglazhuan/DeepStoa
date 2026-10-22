@@ -95,6 +95,8 @@ static void on_event(app_event_t event, const void *data)
         show(title, (a && a->label[0]) ? a->label : "Alarm");
     } else if (event == APP_EVENT_TIMER_FINISHED) {
         show("00:00", "Timer finished");
+    } else if (event == APP_EVENT_POMODORO_FINISHED) {
+        show("00:00", "Pomodoro complete — take a break");
     }
 }
 

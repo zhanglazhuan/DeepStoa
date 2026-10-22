@@ -1,5 +1,5 @@
 // apps/clock/model.c
-// Clock model —— 只剩 UI 状态，业务数据都在 system/alarm。
+// Clock model —— 只剩 UI 状态，业务数据都在 system/services/alarm。
 
 #include <stdlib.h>
 #include <string.h>

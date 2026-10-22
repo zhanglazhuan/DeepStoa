@@ -15,5 +15,5 @@ idf_component_register(
         "submodules/controller_wifi.c"
     INCLUDE_DIRS "." "subpages" "submodules"
     REQUIRES driver lvgl
-    PRIV_REQUIRES appmgr uilv controller ota wifi timeservice
+    PRIV_REQUIRES appmgr uilv controller ota wifi time battery
 )

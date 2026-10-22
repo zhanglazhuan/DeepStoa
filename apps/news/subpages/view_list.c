@@ -4,7 +4,7 @@
  * 屏幕 480x800，可用内容区约 448x710。整页布局：
  *
  *  ┌───────────────────────────────┐
- *  │ [<]      News            [↻]  │  header（右上角刷新，长按注入故障）
+ *  │          News                 │
  *  ├───────────────────────────────┤
  *  │ Refreshing...                 │  仅"已有内容 + 正在刷新"时出现
  *  │ ┌───────────────────────────┐ │
@@ -12,7 +12,7 @@
  *  │ │ source  ·  date  (18px)   │ │  ← 一张卡片 ≈ 220px，一屏约 3 张
  *  │ │ summary        (24px 3 行) │ │
  *  │ └───────────────────────────┘ │
- *  │            ...                │
+ *  │            ...           [↻]  │  悬浮刷新，长按注入故障
  *  │ ─────────────────────────────  │
  *  │        [ Load more ]          │  页脚：加载更多 / 加载中 / 重试 /
  *  │      - No more news -         │        没有更多
@@ -28,6 +28,7 @@
 #include <string.h>
 #include <lvgl.h>
 #include "esp_log.h"
+#include "lv_floating_button.h"
 #include "lv_page.h"
 #include "lv_ui_style_guide.h"
 
@@ -36,6 +37,8 @@
 #include "../view.h"
 #include "../model.h"
 #include "../controller.h"
+
+LV_IMAGE_DECLARE(refresh);
 
 static const char *TAG = "news_view_list";
 
@@ -219,9 +222,8 @@ static void build_footer(lv_obj_t *parent, NewsApp *app)
 
 /* ── 空列表时的整页占位 ──────────────────────────────────────── */
 
-static void build_placeholder(lv_obj_t *parent, NewsApp *app,
-                              const char *headline, const char *detail,
-                              const char *action)
+static void build_placeholder(lv_obj_t *parent, const char *headline,
+                              const char *detail)
 {
     lv_obj_t *box = lv_obj_create(parent);
     lv_obj_remove_style_all(box);
@@ -238,9 +240,6 @@ static void build_placeholder(lv_obj_t *parent, NewsApp *app,
     if (detail && detail[0]) {
         lv_obj_t *d = make_text(box, detail, NEWS_FONT_META);
         lv_obj_set_style_text_align(d, LV_TEXT_ALIGN_CENTER, 0);
-    }
-    if (action) {
-        make_action_btn(box, action, news_controller_on_refresh_clicked, app);
     }
 }
 
@@ -266,18 +265,16 @@ void news_view_list_render(NewsApp *app)
     if (m->count == 0) {
         switch (m->list_state) {
         case NEWS_LOAD_BUSY:
-            build_placeholder(ctx->scroll, app,
-                              LV_SYMBOL_REFRESH " Loading news...", NULL, NULL);
+            build_placeholder(ctx->scroll,
+                              LV_SYMBOL_REFRESH " Loading news...", NULL);
             break;
         case NEWS_LOAD_ERROR:
-            build_placeholder(ctx->scroll, app,
+            build_placeholder(ctx->scroll,
                               LV_SYMBOL_WARNING " Could not load news",
-                              m->list_err[0] ? m->list_err : NULL,
-                              LV_SYMBOL_REFRESH " Retry");
+                              m->list_err[0] ? m->list_err : NULL);
             break;
         default:
-            build_placeholder(ctx->scroll, app, "No news yet.", NULL,
-                              LV_SYMBOL_REFRESH " Refresh");
+            build_placeholder(ctx->scroll, "No news yet.", NULL);
             break;
         }
         return;
@@ -311,21 +308,7 @@ static lv_obj_t *build_list_page(NewsApp *app, void *user_data)
     (void)user_data;
     init_styles();
 
-    Page page = lv_page_create("News", true, page_navigator_navigate_back,
-                               &app->view->page_nav);
-
-    /* 右上角刷新：短按刷新，长按给 mock 数据源注入一次网络故障，
-     * 用来在真机上走一遍错误分支（http 实现里长按是空操作）。 */
-    lv_obj_t *refresh = lv_label_create(page.header_right);
-    lv_obj_set_style_text_font(refresh, NEWS_FONT_TITLE, 0);
-    lv_label_set_text(refresh, LV_SYMBOL_REFRESH);
-    lv_obj_center(refresh);
-    lv_obj_add_flag(refresh, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_ext_click_area(refresh, 12);
-    lv_obj_add_event_cb(refresh, news_controller_on_refresh_clicked,
-                        LV_EVENT_CLICKED, app);
-    lv_obj_add_event_cb(refresh, news_controller_on_refresh_long_pressed,
-                        LV_EVENT_LONG_PRESSED, app);
+    Page page = lv_page_create("News", false, NULL, NULL);
 
     /* 滚动容器：卡片、占位、页脚都挂在它下面，整块重建 */
     lv_obj_t *scroll = lv_obj_create(page.container);
@@ -333,12 +316,20 @@ static lv_obj_t *build_list_page(NewsApp *app, void *user_data)
     lv_obj_set_width(scroll, LV_PCT(100));
     lv_obj_set_flex_grow(scroll, 1);
     lv_obj_set_style_pad_ver(scroll, 8, 0);
+    lv_obj_set_style_pad_bottom(scroll,
+                                LV_FLOATING_BUTTON_SIZE + LV_FLOATING_BUTTON_MARGIN, 0);
     lv_obj_set_style_pad_row(scroll, CARD_GAP, 0);
     lv_obj_set_flex_flow(scroll, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(scroll, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
                           LV_FLEX_ALIGN_START);
     lv_obj_set_scroll_dir(scroll, LV_DIR_VER);
     lv_obj_set_scrollbar_mode(scroll, LV_SCROLLBAR_MODE_OFF);
+
+    /* 短按刷新；长按给 mock 数据源注入一次网络故障。 */
+    lv_obj_t *refresh_button = lv_floating_button_create_image(
+        page.container, &refresh, news_controller_on_refresh_clicked, app);
+    lv_obj_add_event_cb(refresh_button, news_controller_on_refresh_long_pressed,
+                        LV_EVENT_LONG_PRESSED, app);
 
     app->view->list_ctx.scroll = scroll;
     /* 离开详情页时那边的控件已经作废，别留着让异步回调摸到 */

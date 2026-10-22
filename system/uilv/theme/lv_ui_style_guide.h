@@ -45,7 +45,7 @@ void ui_style_set_switch(lv_obj_t *sw);
 #define UI_BTN_H_MEDIUM  40
 #define UI_BTN_H_SMALL   32
 
-/* 页面底部的主操作按钮：Clock 的 Add Alarm / Start·Reset、Chatbot 的
+/* 页面底部的主操作按钮：Clock 的 Add Alarm / Start·Reset、Chat 的
  * Hold to Talk 等。整宽（或整行 flex_grow），固定高度，离屏幕底边留出 GAP。
  *
  * GAP 是"离屏幕底边的总距离"，不是 margin。父容器各自有不同的 pad_bottom，

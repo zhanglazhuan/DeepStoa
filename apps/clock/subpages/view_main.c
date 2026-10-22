@@ -1,7 +1,7 @@
 /*
  * view_main.c  --  Clock app main page (tabview)
  *
- * 数据全部来自 system/alarm —— 这一页只负责画和收事件。
+ * 数据全部来自 system/services/alarm —— 这一页只负责画和收事件。
  */
 
 #include <stdio.h>
@@ -229,7 +229,7 @@ static lv_obj_t *build_alarm_tab(lv_obj_t *tab_content, ClockApp *app)
 /* ── Timer tab ───────────────────────────────────────────────── */
 
 /** Timer 页销毁：停掉刷新定时器并解除局部刷新窗口。
- *  计时本身在 system/alarm 里继续跑 —— 这里只是不再画了。 */
+ *  计时本身在 system/services/alarm 里继续跑 —— 这里只是不再画了。 */
 static void timer_tab_delete_cb(lv_event_t *e)
 {
     ClockApp *app = lv_event_get_user_data(e);

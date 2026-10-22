@@ -12,7 +12,19 @@ dependencies.lock
 managed_components/
 
 # ── 按项目策略不入库的目录 ──
-archive/
+archive/*
+!archive/lxj_weather/
+!archive/lxj_todolist/
+!archive/lxj_pomodoro/
+!archive/lxj_mistakebook/
+!archive/lxj_settings/
+!archive/lxj_network/
+!archive/lxj_picture/
+!archive/lxj_fiction/
+!archive/lxj_chat/
+!archive/lxj_audio/
+!archive/lxj_alarm/
+!archive/lxj_clock/
 
 # ── Python artifacts ──
 __pycache__/

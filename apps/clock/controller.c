@@ -1,5 +1,5 @@
 // apps/clock/controller.c
-// Clock controller —— 事件回调，业务全部委派给 system/alarm。
+// Clock controller —— 事件回调，业务全部委派给 system/services/alarm。
 //
 // 这里不再有闹钟轮询和倒计时 tick：
 //   - 闹钟由 alarm_service 订阅 APP_EVENT_CLOCK_TICK 触发，app 关掉照样响；

@@ -1,13 +1,36 @@
 // apps/settings/subpages/view_storage.c
-// Storage info page — Phase 1
-// Ported from D:\Codes\EPOS\epos\apps\settings\subpages\view_storage.c
+// SD card capacity from the mounted filesystem.
 
 #include <lvgl.h>
 #include "lv_page.h"
 #include "page_navigator.h"
 #include "settings_app.h"
-#include "settings_model.h"
 #include "settings_view.h"
+#include "fs_control.h"
+
+static void refresh_storage(lv_obj_t *label, lv_obj_t *bar)
+{
+    uint64_t total = 0, used = 0;
+    if (fs_control_is_mounted()) fs_control_get_usage(&total, &used);
+    if (total == 0) {
+        lv_label_set_text(label, fs_control_is_mounted()
+                          ? "SD card capacity unavailable"
+                          : "SD card not mounted");
+        lv_bar_set_value(bar, 0, LV_ANIM_OFF);
+        return;
+    }
+    lv_label_set_text_fmt(label, "Used: %llu / %llu MiB",
+                          (unsigned long long)(used / (1024U * 1024U)),
+                          (unsigned long long)(total / (1024U * 1024U)));
+    lv_bar_set_value(bar, (int)((double)used * 100.0 / (double)total),
+                     LV_ANIM_OFF);
+}
+
+static void on_refresh(lv_event_t *event)
+{
+    lv_obj_t *bar = lv_event_get_user_data(event);
+    refresh_storage(lv_obj_get_user_data(bar), bar);
+}
 
 static lv_obj_t *build_storage_page(struct SettingsApp *app) {
     Page page = lv_page_create("Storage", true,
@@ -24,19 +47,22 @@ static lv_obj_t *build_storage_page(struct SettingsApp *app) {
     lv_obj_set_style_pad_all(row, 0, 0);
 
     lv_obj_t *title = lv_label_create(row);
-    lv_label_set_text(title, "Disk space");
+    lv_label_set_text(title, "SD card");
 
-    char buf[64];
-    lv_snprintf(buf, sizeof(buf), "Used: %d / %d GB",
-                app->model->storage.storage_used_gb,
-                app->model->storage.storage_total_gb);
     lv_obj_t *label = lv_label_create(row);
-    lv_label_set_text(label, buf);
 
     lv_obj_t *bar = lv_bar_create(row);
     lv_obj_set_width(bar, LV_PCT(100));
-    lv_bar_set_range(bar, 0, app->model->storage.storage_total_gb);
-    lv_bar_set_value(bar, app->model->storage.storage_used_gb, LV_ANIM_OFF);
+    lv_bar_set_range(bar, 0, 100);
+    lv_obj_set_user_data(bar, label);
+    refresh_storage(label, bar);
+
+    lv_obj_t *refresh = lv_button_create(cont);
+    lv_obj_set_width(refresh, LV_PCT(100));
+    lv_obj_add_event_cb(refresh, on_refresh, LV_EVENT_CLICKED, bar);
+    lv_obj_t *refresh_label = lv_label_create(refresh);
+    lv_label_set_text(refresh_label, "Refresh");
+    lv_obj_center(refresh_label);
 
     return page.screen;
 }
