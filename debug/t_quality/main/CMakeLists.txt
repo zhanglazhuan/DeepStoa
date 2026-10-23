@@ -1,11 +1,9 @@
 # debug/t_quality/main/CMakeLists.txt
-# epd_display.c is shared with debug/t_display; referenced in place, not copied.
+# DevKit display transport is local to avoid changing t_display's DeepStoa v1 wiring.
 idf_component_register(
-    SRCS "t_quality.c" "../../t_display/main/epd_display.c"
-    INCLUDE_DIRS "." "../../t_display/main"
-                 "../../../boards/esp32s3"
-    REQUIRES driver esp_timer
-    PRIV_REQUIRES aw9523 ft6336
+    SRCS "t_quality.c" "epd_display.c"
+    INCLUDE_DIRS "." "../../../boards/esp32s3"
+    REQUIRES driver ft6336
 )
 
 # Board: DeepStoa v1 (boards/esp32s3/deepstoa_v1.h)
@@ -16,4 +14,3 @@ idf_component_register(
 # To probe the bus with a 24 MS/s logic analyzer (debug/la_tools) again, add
 #   EPD_SPI_CLOCK_HZ=2000000
 # below — but note that costs ~5x on transfer time.
-

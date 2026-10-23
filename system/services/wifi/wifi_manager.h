@@ -114,6 +114,9 @@ esp_err_t wifi_get_info(wifi_info_t *info);
 /** Quick check — prefer over wifi_get_info() when you only need a bool. */
 bool wifi_is_connected(void);
 
+/** Whether the Wi-Fi radio is actually started (independent of AP connection). */
+bool wifi_manager_is_radio_on(void);
+
 /* ========================================================================
  * 6. Credential Persistence
  * ======================================================================== */

@@ -7,6 +7,8 @@
 #include "lv_bottom_sheet.h"
 #include "../theme/lv_theme_hardcore.h"
 
+extern const lv_image_dsc_t ic_close;
+
 static void delete_event_cb(lv_event_t * e) {
     lv_bottom_sheet_t * bs = lv_event_get_user_data(e);
     if (bs) { lv_free(bs); }
@@ -92,9 +94,8 @@ lv_obj_t * lv_bottom_sheet_add_header(lv_bottom_sheet_t * bs, const char * title
     lv_obj_set_size(cb, 40, 40);
     lv_obj_set_style_bg_opa(cb, LV_OPA_TRANSP, 0);
     lv_obj_set_style_shadow_width(cb, 0, 0);
-    lv_obj_t * cl = lv_label_create(cb);
-    lv_label_set_text(cl, LV_SYMBOL_CLOSE);
-    lv_obj_set_style_text_color(cl, lv_color_black(), 0);
+    lv_obj_t * cl = lv_image_create(cb);
+    lv_image_set_src(cl, &ic_close);
     lv_obj_center(cl);
     lv_obj_add_event_cb(cb, close_btn_event_cb, LV_EVENT_CLICKED, bs);
     lv_obj_move_to_index(bs->header, 0);

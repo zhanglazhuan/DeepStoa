@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdatomic.h>
 #include <string.h>
 #include "../theme/lv_theme_hardcore.h"
 #include "../utils/ui_fonts.h"
@@ -7,6 +8,7 @@
 #include "audio_service.h"
 #include "time_service.h"
 #include "app_event.h"
+#include "wifi_manager.h"
 
 // 使用工程专属的宏来声明图片（兼容内置和外部Flash）
 EPOS_LV_IMG_DECLARE(alarm_on);
@@ -39,6 +41,7 @@ typedef struct {
 } status_bar_t;
 
 static status_bar_t g_status_bar = {0};
+static atomic_bool s_wifi_state_dirty = ATOMIC_VAR_INIT(false);
 
 /* ---------------- 数据源 ----------------
  * 时间来自 system/services/time（RTC + SNTP）。没对上时显示 --:--，
@@ -50,11 +53,6 @@ static void get_time_text(char * buf, size_t len) {
     }
     snprintf(buf, len, "%02d:%02d",
              time_service_get_hour(), time_service_get_minute());
-}
-
-// 注意：如果你的真实业务逻辑返回了 false，这里图标就会隐藏
-static bool mock_is_wifi_on(void) {
-    return true;
 }
 
 static bool mock_is_alarm_on(void) {
@@ -98,16 +96,23 @@ static void on_audio_event(audio_event_t ev, audio_err_t err, void *user_data) {
     }
 }
 
+static void refresh_wifi_icon(void) {
+    if (!g_status_bar.wifi_img) return;
+    bool visible = wifi_manager_is_radio_on();
+    bool hidden = lv_obj_has_flag(g_status_bar.wifi_img, LV_OBJ_FLAG_HIDDEN);
+    if (visible && hidden) {
+        lv_obj_remove_flag(g_status_bar.wifi_img, LV_OBJ_FLAG_HIDDEN);
+    } else if (!visible && !hidden) {
+        lv_obj_add_flag(g_status_bar.wifi_img, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
 /* ---------------- 状态更新逻辑 ---------------- */
 void lv_status_bar_update(void) {
     if (!g_status_bar.right_cont) return;
 
     // 1. 更新 WIFI 显示状态
-    if (mock_is_wifi_on()) {
-        lv_obj_clear_flag(g_status_bar.wifi_img, LV_OBJ_FLAG_HIDDEN);
-    } else {
-        lv_obj_add_flag(g_status_bar.wifi_img, LV_OBJ_FLAG_HIDDEN);
-    }
+    refresh_wifi_icon();
 
     // 2. 更新闹钟显示状态
     if (mock_is_alarm_on()) {
@@ -183,10 +188,19 @@ static void refresh_time_label(void) {
     lv_label_set_text(g_status_bar.time_lbl, time_str);
 }
 
-/* 时间服务每分钟广播一次 tick，状态栏跟着它走，不再自己轮询。 */
-static void on_clock_event(app_event_t event, const void * data) {
+/* 时间服务每分钟广播 tick；Wi-Fi 服务在电台启停后广播状态变化。 */
+static void on_status_event(app_event_t event, const void * data) {
     (void)data;
     if (event == APP_EVENT_CLOCK_TICK) refresh_time_label();
+    else if (event == APP_EVENT_WIFI_RADIO_CHANGED) {
+        atomic_store(&s_wifi_state_dirty, true);
+    }
+}
+
+/* Wi-Fi 事件可能来自工作线程；只在 LVGL 线程读取状态并修改对象。 */
+static void wifi_state_timer_cb(lv_timer_t *timer) {
+    (void)timer;
+    if (atomic_exchange(&s_wifi_state_dirty, false)) refresh_wifi_icon();
 }
 
 /* ---------------- UI 初始化逻辑 ---------------- */
@@ -260,7 +274,8 @@ void lv_status_bar_init(void) {
 
     /* 时间由 APP_EVENT_CLOCK_TICK 驱动（每分钟一次），不再起本地定时器。
      * 状态栏是常驻对象，不会被销毁，所以订阅之后不需要注销。 */
-    app_event_register(on_clock_event);
+    app_event_register(on_status_event);
+    lv_timer_create(wifi_state_timer_cb, 200, NULL);
 }
 
 // 隐藏或显示状态栏

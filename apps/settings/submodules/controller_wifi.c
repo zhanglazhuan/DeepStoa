@@ -189,7 +189,7 @@ static void worker_task(void *arg)
             const char *msg;
             switch (req.op) {
             case REQ_SCAN:    msg = "Scan failed, try again";       break;
-            case REQ_CONNECT: msg = "Connect failed, check password";   break;
+            case REQ_CONNECT: msg = "Connection failed; check Wi-Fi and retry"; break;
             case REQ_ENABLE:  msg = "Could not turn on Wi-Fi";        break;
             default:          msg = "Operation failed";              break;
             }

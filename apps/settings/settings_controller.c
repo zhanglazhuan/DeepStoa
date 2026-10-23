@@ -174,9 +174,8 @@ void settings_controller_set_date_type(lv_event_t *e)
 void settings_controller_set_hour_24(lv_event_t *e)
 {
     SettingsApp *app = (SettingsApp *)lv_event_get_user_data(e);
-    lv_obj_t *sw = lv_event_get_target(e);
     app->model->datetime.hour_24_enabled =
-        lv_obj_has_state(sw, LV_STATE_CHECKED);
+        lv_dropdown_get_selected(lv_event_get_target(e)) == 0;
     /* 时间格式由 system/services/time 持久化并广播，状态栏跟着它变 */
     time_service_set_format_24h(app->model->datetime.hour_24_enabled != 0);
 }

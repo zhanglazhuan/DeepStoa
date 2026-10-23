@@ -3,10 +3,13 @@
 
 #include <lvgl.h>
 #include "lv_page.h"
+#include "lv_floating_button.h"
 #include "page_navigator.h"
 #include "settings_app.h"
 #include "settings_view.h"
 #include "fs_control.h"
+
+LV_IMAGE_DECLARE(refresh);
 
 static void refresh_storage(lv_obj_t *label, lv_obj_t *bar)
 {
@@ -57,12 +60,7 @@ static lv_obj_t *build_storage_page(struct SettingsApp *app) {
     lv_obj_set_user_data(bar, label);
     refresh_storage(label, bar);
 
-    lv_obj_t *refresh = lv_button_create(cont);
-    lv_obj_set_width(refresh, LV_PCT(100));
-    lv_obj_add_event_cb(refresh, on_refresh, LV_EVENT_CLICKED, bar);
-    lv_obj_t *refresh_label = lv_label_create(refresh);
-    lv_label_set_text(refresh_label, "Refresh");
-    lv_obj_center(refresh_label);
+    lv_floating_button_create_image(cont, &refresh, on_refresh, bar);
 
     return page.screen;
 }

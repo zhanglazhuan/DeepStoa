@@ -26,6 +26,7 @@
 #include "esp_netif.h"
 #include "nvs_flash.h"
 #include "wifi_store.h"
+#include "app_event.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
 
@@ -150,6 +151,7 @@ esp_err_t wifi_manager_deinit(void)
     if (s_wifi_ctx.radio_on) {
         esp_wifi_stop();
         s_wifi_ctx.radio_on = false;
+        app_event_fire(APP_EVENT_WIFI_RADIO_CHANGED, NULL);
     }
     esp_wifi_deinit();
     /* netif and event loop cleanup is handled by ESP-IDF on deinit */
@@ -178,6 +180,7 @@ esp_err_t wifi_start(void)
 
     ESP_ERROR_CHECK(esp_wifi_start());
     s_wifi_ctx.radio_on = true;
+    app_event_fire(APP_EVENT_WIFI_RADIO_CHANGED, NULL);
     ESP_LOGI(TAG, "WiFi radio ON");
     return ESP_OK;
 }
@@ -197,6 +200,7 @@ esp_err_t wifi_stop(void)
 
     ESP_ERROR_CHECK(esp_wifi_stop());
     s_wifi_ctx.radio_on = false;
+    app_event_fire(APP_EVENT_WIFI_RADIO_CHANGED, NULL);
     clear_cached_info();
     ESP_LOGI(TAG, "WiFi radio OFF");
     return ESP_OK;
@@ -371,10 +375,10 @@ esp_err_t wifi_scan(wifi_ap_record_t *records, uint16_t max_count,
 
     ESP_LOGI(TAG, "Scan done: %d APs (showing %d)", total, count);
     for (int i = 0; i < count; i++) {
-        ESP_LOGI(TAG, "  [%d] \"%s\"  RSSI=%d  CH=%d  %s",
+        ESP_LOGI(TAG, "  [%d] \"%s\"  RSSI=%d  CH=%d  auth=%d",
                  i, records[i].ssid, records[i].rssi,
                  records[i].primary,
-                 records[i].authmode == WIFI_AUTH_OPEN ? "(open)" : "");
+                 records[i].authmode);
     }
     ret = ESP_OK;
 
@@ -416,6 +420,11 @@ esp_err_t wifi_get_info(wifi_info_t *info)
 bool wifi_is_connected(void)
 {
     return s_wifi_ctx.initialized && s_wifi_ctx.connected;
+}
+
+bool wifi_manager_is_radio_on(void)
+{
+    return s_wifi_ctx.initialized && s_wifi_ctx.radio_on;
 }
 
 /* ========================================================================
@@ -516,6 +525,9 @@ static esp_err_t connect_internal(const char *ssid, const char *password)
     strncpy((char *)cfg.sta.ssid, ssid, sizeof(cfg.sta.ssid) - 1);
     strncpy((char *)cfg.sta.password, password, sizeof(cfg.sta.password) - 1);
     cfg.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
+    cfg.sta.pmf_cfg.capable = true;
+    cfg.sta.pmf_cfg.required = false;
+    cfg.sta.sae_pwe_h2e = WPA3_SAE_PWE_BOTH;
 
     esp_err_t set_ret = esp_wifi_set_config(WIFI_IF_STA, &cfg);
     if (set_ret != ESP_OK) return set_ret;
@@ -541,7 +553,7 @@ static esp_err_t wait_for_connection(void)
         return ESP_OK;
     }
     if (bits & WIFI_DISCONNECTED_BIT) {
-        ESP_LOGE(TAG, "Auth failed (wrong password?)");
+        ESP_LOGE(TAG, "Connection attempt disconnected; see reason above");
         return ESP_ERR_TIMEOUT;
     }
 
@@ -609,7 +621,9 @@ static void event_handler(void *arg, esp_event_base_t event_base,
         case WIFI_EVENT_STA_DISCONNECTED: {
             wifi_event_sta_disconnected_t *ev =
                 (wifi_event_sta_disconnected_t *)event_data;
-            ESP_LOGW(TAG, "Disconnected (reason=%d)", ev->reason);
+            ESP_LOGW(TAG, "Disconnected (reason=%d, rssi=%d, bssid=%02x:%02x:%02x:%02x:%02x:%02x)",
+                     ev->reason, ev->rssi, ev->bssid[0], ev->bssid[1],
+                     ev->bssid[2], ev->bssid[3], ev->bssid[4], ev->bssid[5]);
             s_wifi_ctx.connected = false;
             clear_cached_info();
             xEventGroupSetBits(s_wifi_ctx.event_group, WIFI_DISCONNECTED_BIT);

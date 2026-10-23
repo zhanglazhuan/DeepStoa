@@ -7,6 +7,7 @@ idf_component_register(
         "settings_view.c"
         "subpages/view_home.c"
         "subpages/view_general.c"
+        "subpages/view_manual_datetime.c"
         "subpages/view_battery.c"
         "subpages/view_storage.c"
         "subpages/view_security.c"

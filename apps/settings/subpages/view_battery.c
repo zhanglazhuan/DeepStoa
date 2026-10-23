@@ -10,7 +10,6 @@
 #include "settings_view.h"
 #include "settings_controller.h"
 #include "lv_ui_style_guide.h"
-#include "battery.h"
 
 static lv_obj_t *build_battery_page(struct SettingsApp *app) {
     Page page = lv_page_create("Battery", true,
@@ -19,14 +18,6 @@ static lv_obj_t *build_battery_page(struct SettingsApp *app) {
     lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
     lv_obj_set_style_pad_gap(cont, 16, 0);
-
-    int percent = battery_get_percent();
-    lv_obj_t *status = lv_label_create(cont);
-    lv_obj_set_width(status, LV_PCT(100));
-    if (percent < 0) lv_label_set_text(status, "Battery reading unavailable");
-    else lv_label_set_text_fmt(status, battery_is_charging()
-                               ? "Battery: %d%% (charging)" : "Battery: %d%%",
-                               percent);
 
     // Percentage row —— 标题在上、控件在下，与 Update 页一致
     lv_obj_t *pr = lv_obj_create(cont);
@@ -58,6 +49,8 @@ static lv_obj_t *build_battery_page(struct SettingsApp *app) {
     lv_label_set_text(sl, "Auto Sleep");
 
     lv_obj_t *sd = lv_dropdown_create(sr);
+    lv_obj_set_width(sd, LV_PCT(100));
+    ui_style_set_dropdown(sd);
     lv_dropdown_set_options(sd, "5 min\n15 min\n30 min");
     int sel = (app->model->battery.auto_sleep_minutes == 5)  ? 0 :
               (app->model->battery.auto_sleep_minutes == 15) ? 1 : 2;

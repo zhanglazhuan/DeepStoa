@@ -12,11 +12,13 @@
 
 #include "esp_log.h"
 #include "lv_page.h"
+#include "lv_floating_button.h"
 #include "lv_theme_hardcore.h"
 #include "lv_folder_selector.h"
 #include "sd_control.h"
 
 static const char *TAG = "lv_folder_selector";
+extern const lv_image_dsc_t ic_arrow_upward;
 
 #define FSEL_MAX_ENTRIES   64    /* 单个目录一次最多列出的条目数 */
 #define FSEL_MAX_NAME      64
@@ -38,6 +40,7 @@ typedef struct {
     lv_obj_t   *path_label;
     lv_obj_t   *path_list;
     lv_obj_t   *hint_label;
+    lv_obj_t   *up_button;
 
     /* 当前目录的条目快照。列表按钮的 user_data 存的是这里的下标，
      * 避免像 EPOS 那样从 label 文本里反解析文件名。 */
@@ -149,7 +152,7 @@ static void toggle_selection(fs_selector_ctx_t *ctx, const char *full_path, bool
     }
 }
 
-/* 按钮的 user_data 里存的是 entries[] 下标 +1（0 保留给 ".."） */
+/* 按钮的 user_data 里存的是 entries[] 下标 +1。 */
 static const fsel_entry_t *entry_of(fs_selector_ctx_t *ctx, lv_obj_t *btn)
 {
     intptr_t tag = (intptr_t)lv_obj_get_user_data(btn);
@@ -157,15 +160,45 @@ static const fsel_entry_t *entry_of(fs_selector_ctx_t *ctx, lv_obj_t *btn)
     return &ctx->entries[tag - 1];
 }
 
+static lv_obj_t *row_button(lv_obj_t *row)
+{
+    for (uint32_t i = 0; i < lv_obj_get_child_count(row); i++) {
+        lv_obj_t *child = lv_obj_get_child(row, i);
+        if (lv_obj_check_type(child, &lv_button_class)) return child;
+    }
+    return NULL;
+}
+
+static lv_obj_t *row_checkbox(lv_obj_t *row)
+{
+    for (uint32_t i = 0; i < lv_obj_get_child_count(row); i++) {
+        lv_obj_t *child = lv_obj_get_child(row, i);
+        if (lv_obj_check_type(child, &lv_checkbox_class)) return child;
+    }
+    return NULL;
+}
+
+static bool path_is_selected(const fs_selector_ctx_t *ctx, const char *path)
+{
+    for (uint8_t i = 0; i < ctx->selected_count; i++) {
+        if (strcmp(ctx->selected_paths[i], path) == 0) return true;
+    }
+    return false;
+}
+
 static void update_hint(fs_selector_ctx_t *ctx)
 {
     if (!ctx->hint_label) return;
+    if (ctx->list_ok && ctx->visible_count > 0 &&
+        ctx->mode == FS_SEL_MODE_SINGLE_DIR) {
+        lv_obj_add_flag(ctx->hint_label, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
+    lv_obj_remove_flag(ctx->hint_label, LV_OBJ_FLAG_HIDDEN);
     if (!ctx->list_ok) {
         lv_label_set_text(ctx->hint_label, "SD card unavailable");
     } else if (ctx->visible_count == 0) {
         lv_label_set_text(ctx->hint_label, "No matching files");
-    } else if (ctx->mode == FS_SEL_MODE_SINGLE_DIR) {
-        lv_label_set_text(ctx->hint_label, "OK selects this folder");
     } else if (ctx->selected_count == 0) {
         lv_label_set_text(ctx->hint_label, "Nothing selected");
     } else if (ctx->selected_count == 1) {
@@ -183,8 +216,7 @@ static void checkbox_event_cb(lv_event_t *e)
     fs_selector_ctx_t *ctx = lv_event_get_user_data(e);
     if (!ctx) return;
 
-    lv_obj_t *row = lv_obj_get_parent(cb);
-    lv_obj_t *btn = lv_obj_get_child(row, 0);
+    lv_obj_t *btn = lv_obj_get_user_data(cb);
     const fsel_entry_t *entry = entry_of(ctx, btn);
     if (!entry) return;
 
@@ -193,7 +225,15 @@ static void checkbox_event_cb(lv_event_t *e)
     full_path[sizeof(full_path) - 1] = '\0';
     path_append(full_path, entry->name);
 
-    toggle_selection(ctx, full_path, lv_obj_has_state(cb, LV_STATE_CHECKED));
+    bool checked = lv_obj_has_state(cb, LV_STATE_CHECKED);
+    if (checked && ctx->mode == FS_SEL_MODE_SINGLE_DIR) {
+        ctx->selected_count = 0;
+        for (uint32_t i = 0; i < lv_obj_get_child_count(ctx->path_list); i++) {
+            lv_obj_t *other = row_checkbox(lv_obj_get_child(ctx->path_list, i));
+            if (other && other != cb) lv_obj_remove_state(other, LV_STATE_CHECKED);
+        }
+    }
+    toggle_selection(ctx, full_path, checked);
     update_hint(ctx);
 }
 
@@ -205,17 +245,11 @@ static void list_btn_event_cb(lv_event_t *e)
 
     const fsel_entry_t *entry = entry_of(ctx, btn);
 
-    /* user_data 为 0 → ".." 返回上一级 */
-    if (!entry) {
-        path_go_up(ctx->current_path);
-        ctx->selected_count = 0;   /* 离开目录时清空已选 */
-        refresh_path_list(ctx);
-        return;
-    }
+    if (!entry) return;
 
     if (entry->is_dir) {
         path_append(ctx->current_path, entry->name);
-        ctx->selected_count = 0;
+        if (ctx->mode != FS_SEL_MODE_SINGLE_DIR) ctx->selected_count = 0;
         refresh_path_list(ctx);
         return;
     }
@@ -232,12 +266,21 @@ static void list_btn_event_cb(lv_event_t *e)
         /* 视觉反馈：清掉兄弟行的选中态，只高亮当前行 */
         lv_obj_t *list = lv_obj_get_parent(lv_obj_get_parent(btn));
         for (uint32_t i = 0; i < lv_obj_get_child_count(list); i++) {
-            lv_obj_t *sibling = lv_obj_get_child(lv_obj_get_child(list, i), 0);
+            lv_obj_t *sibling = row_button(lv_obj_get_child(list, i));
             if (sibling) lv_obj_remove_state(sibling, LV_STATE_CHECKED);
         }
         lv_obj_add_state(btn, LV_STATE_CHECKED);
         update_hint(ctx);
     }
+}
+
+static void go_up_event_cb(lv_event_t *e)
+{
+    fs_selector_ctx_t *ctx = lv_event_get_user_data(e);
+    if (!ctx || strcmp(ctx->current_path, FSEL_ROOT) == 0) return;
+    path_go_up(ctx->current_path);
+    if (ctx->mode != FS_SEL_MODE_SINGLE_DIR) ctx->selected_count = 0;
+    refresh_path_list(ctx);
 }
 
 static void confirm_event_handler(lv_event_t *e)
@@ -247,22 +290,15 @@ static void confirm_event_handler(lv_event_t *e)
 
     memset(&ctx->final_selection, 0, sizeof(fs_selection_t));
 
-    if (ctx->mode == FS_SEL_MODE_SINGLE_DIR) {
-        /* 单选目录直接返回当前所在路径 */
-        ctx->path_ptrs[0] = ctx->current_path;
-        ctx->final_selection.paths = ctx->path_ptrs;
-        ctx->final_selection.count = 1;
-    } else {
-        if (ctx->selected_count == 0) {
-            ESP_LOGW(TAG, "OK pressed with nothing selected");
-            return;
-        }
-        for (int i = 0; i < ctx->selected_count; i++) {
-            ctx->path_ptrs[i] = ctx->selected_paths[i];
-        }
-        ctx->final_selection.paths = ctx->path_ptrs;
-        ctx->final_selection.count = ctx->selected_count;
+    if (ctx->selected_count == 0) {
+        ESP_LOGW(TAG, "OK pressed with nothing selected");
+        return;
     }
+    for (int i = 0; i < ctx->selected_count; i++) {
+        ctx->path_ptrs[i] = ctx->selected_paths[i];
+    }
+    ctx->final_selection.paths = ctx->path_ptrs;
+    ctx->final_selection.count = ctx->selected_count;
 
     ctx->callback(&ctx->final_selection, ctx->user_data);
 }
@@ -275,7 +311,7 @@ static void cleanup_event_handler(lv_event_t *e)
 
 /* ── 列表构建 ───────────────────────────────────────────────────────── */
 
-/* 一行 = 容器 + 左侧图标文字按钮（+ 多选模式下右侧 checkbox） */
+/* 一行 = 左侧可选 checkbox + 右侧进入目录/选择文件的文本按钮。 */
 static lv_obj_t *create_list_row(lv_obj_t *parent, const char *icon, const char *name)
 {
     lv_obj_t *row = lv_obj_create(parent);
@@ -283,17 +319,28 @@ static lv_obj_t *create_list_row(lv_obj_t *parent, const char *icon, const char 
     lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(row, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_all(row, 0, 0);
+    lv_obj_set_style_pad_column(row, 8, 0);
     lv_obj_set_style_border_width(row, 0, 0);
     lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
 
     lv_obj_t *btn = lv_btn_create(row);
     lv_obj_set_flex_grow(btn, 1);
     lv_obj_set_height(btn, LV_PCT(100));
+    lv_obj_set_style_bg_color(btn, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_text_color(btn, lv_color_black(), LV_PART_MAIN);
+    lv_obj_set_style_border_width(btn, 0, LV_PART_MAIN);
+    lv_obj_set_style_border_width(btn, 1, LV_PART_MAIN | LV_STATE_CHECKED);
+    lv_obj_set_style_border_color(btn, lv_color_black(), LV_PART_MAIN | LV_STATE_CHECKED);
+    lv_obj_set_style_shadow_width(btn, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_hor(btn, 0, LV_PART_MAIN);
 
     lv_obj_t *lbl = lv_label_create(btn);
     lv_label_set_text_fmt(lbl, "%s  %s", icon, name);
     lv_obj_set_width(lbl, LV_PCT(100));
-    /* 墨水屏上不要用 SCROLL_CIRCULAR：那是永不停止的动画，会一直触发局部刷新 */
+    lv_obj_set_height(lbl, lv_font_get_line_height(
+                           lv_obj_get_style_text_font(lbl, LV_PART_MAIN)));
+    /* 固定一行高度，超出可用宽度时只在右侧显示省略号。 */
     lv_label_set_long_mode(lbl, LV_LABEL_LONG_MODE_DOTS);
     lv_obj_set_style_text_align(lbl, LV_TEXT_ALIGN_LEFT, 0);
     lv_obj_center(lbl);
@@ -310,15 +357,12 @@ static void refresh_path_list(fs_selector_ctx_t *ctx)
                                  FSEL_MAX_ENTRIES, &ctx->entry_count);
     ctx->visible_count = 0;
 
-    /* 1. ".." 返回上一级（根目录不显示） */
-    if (strcmp(ctx->current_path, FSEL_ROOT) != 0) {
-        lv_obj_t *row = create_list_row(ctx->path_list, LV_SYMBOL_DIRECTORY, "..");
-        lv_obj_t *btn = lv_obj_get_child(row, 0);
-        lv_obj_set_user_data(btn, (void *)(intptr_t)0);
-        lv_obj_add_event_cb(btn, list_btn_event_cb, LV_EVENT_CLICKED, ctx);
-    }
+    if (strcmp(ctx->current_path, FSEL_ROOT) == 0)
+        lv_obj_add_flag(ctx->up_button, LV_OBJ_FLAG_HIDDEN);
+    else
+        lv_obj_remove_flag(ctx->up_button, LV_OBJ_FLAG_HIDDEN);
 
-    /* 2. 目录内容 */
+    /* 目录内容 */
     bool dir_mode = (ctx->mode == FS_SEL_MODE_SINGLE_DIR || ctx->mode == FS_SEL_MODE_MULTI_DIR);
 
     for (uint16_t i = 0; i < ctx->entry_count; i++) {
@@ -330,16 +374,28 @@ static void refresh_path_list(fs_selector_ctx_t *ctx)
         lv_obj_t *row = create_list_row(ctx->path_list,
                                         entry->is_dir ? LV_SYMBOL_DIRECTORY : LV_SYMBOL_FILE,
                                         entry->name);
-        lv_obj_t *btn = lv_obj_get_child(row, 0);
+        lv_obj_t *btn = row_button(row);
         lv_obj_set_user_data(btn, (void *)(intptr_t)(i + 1));
         lv_obj_add_event_cb(btn, list_btn_event_cb, LV_EVENT_CLICKED, ctx);
         ctx->visible_count++;
 
-        bool show_checkbox = (ctx->mode == FS_SEL_MODE_MULTI_DIR  &&  entry->is_dir) ||
+        bool show_checkbox = ((ctx->mode == FS_SEL_MODE_SINGLE_DIR ||
+                               ctx->mode == FS_SEL_MODE_MULTI_DIR) && entry->is_dir) ||
                              (ctx->mode == FS_SEL_MODE_MULTI_FILE && !entry->is_dir);
         if (show_checkbox) {
             lv_obj_t *cb = lv_checkbox_create(row);
             lv_checkbox_set_text(cb, "");
+            lv_obj_set_style_transform_width(cb, -6, LV_PART_INDICATOR);
+            lv_obj_set_style_transform_height(cb, -6, LV_PART_INDICATOR);
+            lv_obj_set_style_text_font(cb, LV_FONT_TINY, LV_PART_INDICATOR);
+            lv_obj_set_user_data(cb, btn);
+            lv_obj_move_to_index(cb, 0);
+            char full_path[FS_MAX_PATH_LEN];
+            snprintf(full_path, sizeof(full_path), "%s", ctx->current_path);
+            path_append(full_path, entry->name);
+            if (path_is_selected(ctx, full_path)) {
+                lv_obj_add_state(cb, LV_STATE_CHECKED);
+            }
             lv_obj_add_event_cb(cb, checkbox_event_cb, LV_EVENT_VALUE_CHANGED, ctx);
         }
     }
@@ -356,6 +412,7 @@ lv_obj_t *folder_selector_create_filtered(fs_selector_mode_t mode, const char *s
     const char *title = (mode == FS_SEL_MODE_SINGLE_DIR || mode == FS_SEL_MODE_MULTI_DIR)
                         ? "Select Folder" : "Select File";
     Page page = lv_page_create(title, true, back_cb, nav_data);
+    lv_obj_set_style_pad_bottom(page.container, 32, LV_PART_MAIN);
 
     fs_selector_ctx_t *ctx = malloc(sizeof(fs_selector_ctx_t));
     if (!ctx) {
@@ -387,6 +444,17 @@ lv_obj_t *folder_selector_create_filtered(fs_selector_mode_t mode, const char *s
     ctx->path_list = lv_list_create(page.container);
     lv_obj_set_width(ctx->path_list, LV_PCT(100));
     lv_obj_set_flex_grow(ctx->path_list, 1);
+    lv_obj_set_style_pad_all(ctx->path_list, 0, LV_PART_MAIN);
+    lv_obj_set_style_border_width(ctx->path_list, 0, LV_PART_MAIN);
+    lv_obj_set_flex_align(ctx->path_list, LV_FLEX_ALIGN_START,
+                          LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_style_pad_bottom(ctx->path_list,
+                                LV_FLOATING_BUTTON_SIZE + LV_FLOATING_BUTTON_MARGIN,
+                                LV_PART_MAIN);
+
+    ctx->up_button = lv_floating_button_create_image(page.container,
+                                                      &ic_arrow_upward,
+                                                      go_up_event_cb, ctx);
 
     lv_obj_t *confirm_btn = lv_btn_create(page.container);
     lv_obj_set_width(confirm_btn, LV_PCT(100));
@@ -399,6 +467,9 @@ lv_obj_t *folder_selector_create_filtered(fs_selector_mode_t mode, const char *s
     lv_obj_add_event_cb(confirm_btn, confirm_event_handler, LV_EVENT_CLICKED, ctx);
     lv_obj_add_event_cb(page.screen, cleanup_event_handler, LV_EVENT_DELETE, ctx);
 
+    lv_obj_update_layout(page.screen);
+    lv_obj_align_to(ctx->up_button, ctx->path_list, LV_ALIGN_BOTTOM_RIGHT,
+                    -LV_FLOATING_BUTTON_MARGIN, -LV_FLOATING_BUTTON_MARGIN);
     refresh_path_list(ctx);
 
     return page.screen;
