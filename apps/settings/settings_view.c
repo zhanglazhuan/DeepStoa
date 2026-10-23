@@ -12,6 +12,7 @@
 // Phase 1 subpages
 #include "subpages/view_home.h"
 #include "subpages/view_general.h"
+#include "subpages/view_manual_datetime.h"
 #include "subpages/view_battery.h"
 #include "subpages/view_storage.h"
 #include "subpages/view_security.h"
@@ -34,6 +35,7 @@ void settings_view_init(struct SettingsApp *app)
     // Register Phase 1 subpages
     settings_view_home_init_registry(app);
     settings_view_general_init_registry(app);
+    settings_view_manual_datetime_init_registry(app);
     settings_view_battery_init_registry(app);
     settings_view_storage_init_registry(app);
     settings_view_security_init_registry(app);

@@ -132,6 +132,7 @@ lv_obj_t * lv_number_input_create(lv_obj_t * parent, const char * title, int ini
     char buf[16]; snprintf(buf, sizeof(buf), "%d", ctx->current_val);
     lv_textarea_set_text(ctx->ta, buf);
     lv_obj_add_event_cb(ctx->ta, ta_event_cb, LV_EVENT_READY, ctx);
+    lv_obj_add_event_cb(ctx->ta, ta_event_cb, LV_EVENT_DEFOCUSED, ctx);
 
     ctx->btn_plus = lv_button_create(input_cont);
     lv_obj_set_width(ctx->btn_plus, 40); // 高度由后面统一管理
@@ -190,6 +191,19 @@ void lv_num_input_set_height(lv_obj_t * obj, lv_coord_t h) {
     // 并且因为高度是 CONTENT 自适应，内部纵向滚动行程（max_scroll_y）被死死卡在 0 像素
     // 从而在物理层面彻底剥夺了文本框内部上下乱跳的可能。
     lv_obj_set_height(ctx->ta, LV_SIZE_CONTENT);
+}
+
+void lv_num_input_set_field_width(lv_obj_t * obj, lv_coord_t width) {
+    if (!obj || width <= 0) return;
+    uint32_t n = lv_obj_get_event_count(obj);
+    for (uint32_t i = 0; i < n; i++) {
+        lv_event_dsc_t * dsc = lv_obj_get_event_dsc(obj, i);
+        if (dsc && lv_event_dsc_get_cb(dsc) == ctx_store_cb) {
+            lv_num_input_ctx_t *ctx = lv_event_dsc_get_user_data(dsc);
+            if (ctx && ctx->ta) lv_obj_set_width(ctx->ta, width);
+            return;
+        }
+    }
 }
 
 void lv_num_input_set_range(lv_obj_t * obj, int minimum, int maximum) {

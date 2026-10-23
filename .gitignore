@@ -4,6 +4,11 @@ build/
 # ── debug/ 子项目（各自是独立 ESP-IDF 工程：源码入库、编译产物忽略）──
 debug/**/build/
 debug/*/build*
+debug/t_wifi/main/wifi_credentials.h
+debug/t_wifi/sdkconfig.s3*
+debug/t_wifi/sdkconfig.wpa2*
+debug/t_wifi/sdkconfig.aligned*
+debug/t_wifi/sdkconfig.slow*
 
 # ── ESP-IDF 生成 / 托管产物 ──
 sdkconfig

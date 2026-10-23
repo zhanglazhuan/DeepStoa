@@ -31,9 +31,10 @@ enum settings_page_id_t {
     PAGE_UPDATES,                   // Phase 2
     PAGE_UPDATES_DOWNLOAD,          // Phase 2
     PAGE_UPDATES_SD_SELECT,         // Phase 2
+    PAGE_GENERAL_MANUAL_DATETIME,
 };
 
-#define SETTINGS_PAGE_ID_MAX    20
+#define SETTINGS_PAGE_ID_MAX    21
 #define SETTINGS_MAX_NAV_STACK  10
 
 typedef struct SettingsView {

@@ -52,4 +52,5 @@ idf_component_register(
         controller
         events
         logs
+        wifi
 )

@@ -25,6 +25,7 @@
 #include "lv_theme_hardcore.h"
 #include "ui_fonts.h"
 #include "lv_bottom_sheet.h"
+#include "lv_floating_button.h"
 #include "lv_toast.h"
 #include "lv_epd_region.h"
 #include "widgets/lv_keyboard.h"
@@ -34,6 +35,8 @@
 #include "settings_view.h"
 #include "submodules/controller_wifi.h"
 #include "view_wifi.h"
+
+LV_IMAGE_DECLARE(refresh);
 
 static const char *TAG = "settings_view_wifi";
 
@@ -212,7 +215,9 @@ static void create_network_row(lv_obj_t *parent, const wifi_scan_entry_t *n,
     lv_obj_set_style_border_width(row, 1, 0);
     lv_obj_set_style_border_color(row, lv_color_black(), 0);
     lv_obj_add_flag(row, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_event_cb(row, on_network_clicked, LV_EVENT_CLICKED, (void *)tag);
+    /* A long press opens details; only a short click may start connecting. */
+    lv_obj_add_event_cb(row, on_network_clicked, LV_EVENT_SHORT_CLICKED, (void *)tag);
+    lv_obj_add_event_cb(row, on_info_clicked, LV_EVENT_LONG_PRESSED, (void *)tag);
 
     /* 信号：用格子数而不是颜色 */
     lv_obj_t *sig = lv_label_create(row);
@@ -230,26 +235,12 @@ static void create_network_row(lv_obj_t *parent, const wifi_scan_entry_t *n,
         lv_label_set_text(lock, "*");
     }
 
-    /* 详情 / 忘记网络。NomadCast 没有这个入口，但这里必须有 ——
-     * 密码输错过一次之后会一直自动重连，没有"忘记"就永远改不了。 */
-    lv_obj_t *btn_info = lv_btn_create(row);
-    ui_style_set_btn_secondary(btn_info);
-    lv_obj_set_size(btn_info, 48, 40);
-    lv_obj_set_style_radius(btn_info, 2, 0);
-    lv_obj_t *il = lv_label_create(btn_info);
-    lv_label_set_text(il, LV_SYMBOL_LIST);
-    lv_obj_center(il);
-    lv_obj_add_event_cb(btn_info, on_info_clicked, LV_EVENT_CLICKED, (void *)tag);
 }
 
 /* ── 三个刷新入口 ─────────────────────────────────────────────────── */
 
-void settings_view_wifi_update_visibility(struct SettingsApp *app)
+static void update_visibility(ViewWifiCtx *ctx, settings_model_wifi_t *w)
 {
-    ViewWifiCtx *ctx = wifi_ctx(app);
-    if (!ctx) return;
-
-    settings_model_wifi_t *w = &app->model->wifi;
     bool on = (w->enabled != 0);
 
     if (ctx->sw) {
@@ -273,31 +264,33 @@ void settings_view_wifi_update_visibility(struct SettingsApp *app)
     }
 
     /* 扫描/连接进行中就禁掉，避免重复触发 */
-    if (ctx->scan_btn) {
-        if (on && !w->busy) lv_obj_remove_state(ctx->scan_btn, LV_STATE_DISABLED);
-        else                lv_obj_add_state(ctx->scan_btn, LV_STATE_DISABLED);
+    if (ctx->refresh_btn) {
+        if (on && !w->busy) lv_obj_remove_state(ctx->refresh_btn, LV_STATE_DISABLED);
+        else                lv_obj_add_state(ctx->refresh_btn, LV_STATE_DISABLED);
+        if (on) lv_obj_remove_flag(ctx->refresh_btn, LV_OBJ_FLAG_HIDDEN);
+        else    lv_obj_add_flag(ctx->refresh_btn, LV_OBJ_FLAG_HIDDEN);
     }
 
     /* Wi-Fi 关掉时，开关以下的东西全部收起来 —— 和 NomadCast 里
      * `if (!wifi_on) return page.screen;` 是同一个意思，只是这里页面常驻，
      * 用隐藏而不是不构建。 */
     if (on) {
-        lv_obj_remove_flag(ctx->scan_btn, LV_OBJ_FLAG_HIDDEN);
         lv_obj_remove_flag(ctx->scanned_cont, LV_OBJ_FLAG_HIDDEN);
     } else {
         lv_obj_add_flag(ctx->connected_row, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(ctx->scan_btn, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(ctx->scanned_cont, LV_OBJ_FLAG_HIDDEN);
     }
 }
 
-void settings_view_wifi_update_connected(struct SettingsApp *app)
+void settings_view_wifi_update_visibility(struct SettingsApp *app)
 {
     ViewWifiCtx *ctx = wifi_ctx(app);
     if (!ctx) return;
+    update_visibility(ctx, &app->model->wifi);
+}
 
-    settings_model_wifi_t *w = &app->model->wifi;
-
+static void update_connected(ViewWifiCtx *ctx, settings_model_wifi_t *w)
+{
     if (ctx->connection_status) {
         wifi_info_t live = {0};
         bool connected = wifi_get_info(&live) == ESP_OK && live.is_connected;
@@ -324,12 +317,17 @@ void settings_view_wifi_update_connected(struct SettingsApp *app)
     }
 }
 
-void settings_view_wifi_update_scanned_list(struct SettingsApp *app)
+void settings_view_wifi_update_connected(struct SettingsApp *app)
 {
     ViewWifiCtx *ctx = wifi_ctx(app);
+    if (!ctx) return;
+    update_connected(ctx, &app->model->wifi);
+}
+
+static void update_scanned_list(ViewWifiCtx *ctx, settings_model_wifi_t *w)
+{
     if (!ctx || !ctx->scanned_cont) return;
 
-    settings_model_wifi_t *w = &app->model->wifi;
     lv_obj_clean(ctx->scanned_cont);
 
     /* 扫描中不渲染上一次的结果 —— 照 NomadCast 的做法。
@@ -373,6 +371,13 @@ void settings_view_wifi_update_scanned_list(struct SettingsApp *app)
 
         create_network_row(ctx->scanned_cont, &w->scanned[i], (uintptr_t)(i + 1));
     }
+}
+
+void settings_view_wifi_update_scanned_list(struct SettingsApp *app)
+{
+    ViewWifiCtx *ctx = wifi_ctx(app);
+    if (!ctx) return;
+    update_scanned_list(ctx, &app->model->wifi);
 }
 
 /* ── 密码输入页 ───────────────────────────────────────────────────── */
@@ -531,7 +536,7 @@ static lv_obj_t *build_wifi_password_page(struct SettingsApp *app)
 
 /* ── Wi-Fi 主页 ───────────────────────────────────────────────────── */
 
-static void scan_btn_cb(lv_event_t *e)
+static void refresh_cb(lv_event_t *e)
 {
     (void)e;
     settings_controller_wifi_scan();
@@ -643,19 +648,6 @@ static lv_obj_t *build_wifi_page(struct SettingsApp *app)
 
     lv_obj_add_flag(ctx->connected_row, LV_OBJ_FLAG_HIDDEN);
 
-    /* 扫描按钮。这是本页的主操作，用 primary（实心）—— NomadCast 那里是
-     * 0x1976D2 的蓝色实心按钮，黑白屏上"实心"就是它的等价物。
-     * 分割线去掉了：已连接卡片有边框、列表行有下划线，层次已经够清楚。 */
-    ctx->scan_btn = lv_btn_create(cont);
-    ui_style_set_btn_primary(ctx->scan_btn);
-    lv_obj_set_width(ctx->scan_btn, LV_PCT(100));
-    ui_style_set_btn_size_large(ctx->scan_btn);
-    lv_obj_set_style_margin_top(ctx->scan_btn, 8, 0);
-    lv_obj_t *scan_lbl = lv_label_create(ctx->scan_btn);
-    lv_label_set_text(scan_lbl, LV_SYMBOL_REFRESH "  Scan for Networks");
-    lv_obj_center(scan_lbl);
-    lv_obj_add_event_cb(ctx->scan_btn, scan_btn_cb, LV_EVENT_CLICKED, app);
-
     /* 扫描结果 */
     ctx->scanned_cont = lv_obj_create(cont);
     lv_obj_remove_style_all(ctx->scanned_cont);
@@ -664,10 +656,15 @@ static lv_obj_t *build_wifi_page(struct SettingsApp *app)
     lv_obj_set_flex_flow(ctx->scanned_cont, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_scroll_dir(ctx->scanned_cont, LV_DIR_VER);
     lv_obj_set_scrollbar_mode(ctx->scanned_cont, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_set_style_pad_bottom(ctx->scanned_cont,
+                                LV_FLOATING_BUTTON_SIZE + LV_FLOATING_BUTTON_MARGIN, 0);
 
-    settings_view_wifi_update_visibility(app);
-    settings_view_wifi_update_connected(app);
-    settings_view_wifi_update_scanned_list(app);
+    ctx->refresh_btn = lv_floating_button_create_image(cont, &refresh,
+                                                        refresh_cb, app);
+
+    update_visibility(ctx, &app->model->wifi);
+    update_connected(ctx, &app->model->wifi);
+    update_scanned_list(ctx, &app->model->wifi);
 
     /* 进页面自动扫一次，用户不用先点一下"重新扫描" */
     if (app->model->wifi.enabled && app->model->wifi.scanned_count == 0) {

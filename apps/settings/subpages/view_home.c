@@ -13,8 +13,10 @@
 
 static const char *TAG = "settings_home";
 
-/* ── 48×48 image icons (Google Material Symbols via LVGLImage.py) ── */
+/* Settings list icons (Google Material Symbols via LVGLImage.py). */
 extern const lv_image_dsc_t ic_settings;
+extern const lv_image_dsc_t ic_wifi;
+extern const lv_image_dsc_t ic_update;
 extern const lv_image_dsc_t ic_battery_android_6;
 extern const lv_image_dsc_t ic_home_storage;
 extern const lv_image_dsc_t ic_admin_panel_settings;
@@ -62,7 +64,7 @@ static lv_obj_t *build_home_page(struct SettingsApp *app) {
     lv_obj_t *b1 = lv_list_add_button(list, &ic_settings, "General");
     lv_obj_add_event_cb(b1, on_click_general, LV_EVENT_CLICKED, app);
 
-    lv_obj_t *b2 = lv_list_add_button(list, &ic_settings, "Wi-Fi");
+    lv_obj_t *b2 = lv_list_add_button(list, &ic_wifi, "Wi-Fi");
     lv_obj_add_event_cb(b2, on_click_wifi, LV_EVENT_CLICKED, app);
 
     lv_obj_t *b4 = lv_list_add_button(list, &ic_battery_android_6, "Battery");
@@ -74,7 +76,7 @@ static lv_obj_t *build_home_page(struct SettingsApp *app) {
     lv_obj_t *b6 = lv_list_add_button(list, &ic_admin_panel_settings, "Security");
     lv_obj_add_event_cb(b6, on_click_security, LV_EVENT_CLICKED, app);
 
-    lv_obj_t *b7 = lv_list_add_button(list, &ic_settings, "Update");
+    lv_obj_t *b7 = lv_list_add_button(list, &ic_update, "Update");
     lv_obj_add_event_cb(b7, on_click_updates, LV_EVENT_CLICKED, app);
 
     ESP_LOGI(TAG, "Home page built");

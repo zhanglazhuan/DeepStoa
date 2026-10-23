@@ -261,9 +261,7 @@ static void show_control_panel(void)
                           LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
     /* Read initial states */
-    wifi_info_t wifi_info;
-    wifi_get_info(&wifi_info);
-    bool is_wifi_on = wifi_info.is_connected;
+    bool is_wifi_on = wifi_manager_is_radio_on();
 
     epd_orientation_t current_orient = epd_display_get_orientation();
     bool is_landscape = (current_orient == EPD_ORIENT_LANDSCAPE ||

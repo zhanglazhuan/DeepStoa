@@ -25,6 +25,9 @@ lv_obj_t * lv_number_input_create(lv_obj_t * parent, const char * title, int ini
  */
 void lv_num_input_set_height(lv_obj_t * obj, lv_coord_t h);
 
+/** Set the width of the editable number field (default 60 px). */
+void lv_num_input_set_field_width(lv_obj_t * obj, lv_coord_t width);
+
 /**
  * @brief Restrict values produced by typing and the step buttons.
  */

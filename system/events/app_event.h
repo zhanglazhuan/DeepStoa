@@ -21,6 +21,7 @@ typedef enum {
     APP_EVENT_CLOCK_TICK,            /* data: app_event_clock_tick_t* */
     APP_EVENT_WIFI_CONNECTED,        /* data: NULL */
     APP_EVENT_WIFI_DISCONNECTED,     /* data: NULL */
+    APP_EVENT_WIFI_RADIO_CHANGED,    /* data: NULL — Wi-Fi radio started/stopped */
     APP_EVENT_DOWNLOAD_COMPLETED,    /* data: NULL — a download task finished */
     APP_EVENT_DOWNLOAD_CHANGED,      /* data: NULL — a task changed state w/o success (e.g. failed) */
     APP_EVENT_BATTERY_CHANGED,       /* data: app_event_battery_t* */

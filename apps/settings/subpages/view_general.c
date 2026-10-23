@@ -5,7 +5,6 @@
 
 #include <string.h>
 #include <stdio.h>
-#include <time.h>
 #include <lvgl.h>
 #include "lv_ui_style_guide.h"
 #include "esp_log.h"
@@ -21,80 +20,13 @@
 #include "flash_control.h"
 #include "ota.h"
 #include "time_service.h"
-#include "lv_num_input.h"
-#include "wifi_manager.h"
 
 static const char *TAG = "settings_general";
 
-typedef struct {
-    lv_obj_t *year;
-    lv_obj_t *month;
-    lv_obj_t *day;
-    lv_obj_t *hour;
-    lv_obj_t *minute;
-    lv_obj_t *status;
-} ManualTimeCtx;
-
-static void manual_time_ctx_delete_cb(lv_event_t *e)
-{
-    lv_free(lv_event_get_user_data(e));
-}
-
-static void set_manual_time_cb(lv_event_t *e)
-{
-    ManualTimeCtx *ctx = lv_event_get_user_data(e);
-    if (!ctx) return;
-    bool ok = settings_controller_set_manual_datetime(
-        lv_num_input_get_value(ctx->year),
-        lv_num_input_get_value(ctx->month),
-        lv_num_input_get_value(ctx->day),
-        lv_num_input_get_value(ctx->hour),
-        lv_num_input_get_value(ctx->minute));
-    lv_label_set_text(ctx->status, ok
-        ? "Time verified. Scheduling and recycle cleanup are enabled."
-        : "Could not save this time. Check the date and saved study time.");
-}
-
-static void refresh_time_status(lv_obj_t *label)
-{
-    time_service_state_t state = time_service_get_state();
-    lv_label_set_text_fmt(label, "Time: %02d:%02d:%02d (%s)\n%s",
-                          time_service_get_hour(), time_service_get_minute(),
-                          time_service_get_second(),
-                          time_service_get_format_24h() ? "24h" : "12h",
-                          time_service_has_conflict()
-                              ? "Time conflicts with saved study history"
-                              : state == TIME_STATE_TRUSTED ? "Time verified"
-                              : state == TIME_STATE_ESTIMATED ? "Offline estimate"
-                              : "Time unknown");
-}
-
-static void refresh_time_status_cb(lv_event_t *event)
-{
-    refresh_time_status(lv_event_get_user_data(event));
-}
-
-static void sync_time_cb(lv_event_t *event)
-{
-    lv_obj_t *label = lv_event_get_user_data(event);
-    if (!wifi_is_connected()) {
-        lv_label_set_text(label, "Connect Wi-Fi before syncing time");
-        return;
-    }
-    time_service_sync_sntp();
-    lv_label_set_text(label, "Sync requested. Refresh status in a few seconds.");
-}
-
-static lv_obj_t *manual_time_input(lv_obj_t *parent, const char *title,
-                                   int value, int minimum, int maximum)
-{
-    lv_obj_t *input = lv_number_input_create(parent, title, value, 1, NULL);
-    if (input) {
-        lv_num_input_set_range(input, minimum, maximum);
-        lv_obj_set_width(input, LV_PCT(100));
-    }
-    return input;
-}
+extern const lv_image_dsc_t ic_wallpaper;
+extern const lv_image_dsc_t ic_timezone;
+extern const lv_image_dsc_t ic_info;
+extern const lv_image_dsc_t ic_reboot;
 
 // ── Timezone option string builder ─────────────────────────────────────
 
@@ -122,6 +54,9 @@ static void on_click_wallpaper(lv_event_t *e) {
 }
 static void on_click_datetime(lv_event_t *e) {
     PAGE_NAVIGATE_TO((SettingsApp *)lv_event_get_user_data(e), PAGE_GENERAL_DATETIME, NULL);
+}
+static void on_click_manual_datetime(lv_event_t *e) {
+    PAGE_NAVIGATE_TO((SettingsApp *)lv_event_get_user_data(e), PAGE_GENERAL_MANUAL_DATETIME, NULL);
 }
 static void on_click_about(lv_event_t *e) {
     PAGE_NAVIGATE_TO((SettingsApp *)lv_event_get_user_data(e), PAGE_GENERAL_ABOUT, NULL);
@@ -164,34 +99,6 @@ static lv_obj_t *reboot_action_btn(lv_obj_t *parent, const char *text, bool prim
     return btn;
 }
 
-/* 建弹层壳子：标题 + 正文，返回内容区供调用方接着加按钮。
- * 刻意不调 lv_bottom_sheet_add_header() —— 它自带关闭 ×，会变成第三个出口，
- * 用户还得先分辨"哪个是取消"。点遮罩关闭是 widget 自带的无害默认退出。 */
-static lv_obj_t *reboot_sheet_body(lv_bottom_sheet_t *bs, const char *title, const char *message)
-{
-    lv_obj_t *c = lv_bottom_sheet_get_content(bs);
-    lv_obj_set_flex_flow(c, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(c, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
-                          LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_row(c, 12, 0);
-
-    lv_obj_t *t = lv_label_create(c);
-    lv_obj_set_width(t, LV_PCT(100));
-    lv_label_set_long_mode(t, LV_LABEL_LONG_WRAP);
-    lv_obj_set_style_text_align(t, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_text_font(t, LV_FONT_NORMAL, 0);
-    lv_label_set_text(t, title);
-
-    lv_obj_t *m = lv_label_create(c);
-    lv_obj_set_width(m, LV_PCT(100));
-    lv_label_set_long_mode(m, LV_LABEL_LONG_WRAP);
-    lv_obj_set_style_text_align(m, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_text_font(m, LV_FONT_SMALL, 0);
-    lv_obj_set_style_pad_bottom(m, 8, 0);
-    lv_label_set_text(m, message);
-    return c;
-}
-
 static void reboot_cancel_cb(lv_event_t *e) {
     lv_bottom_sheet_close((lv_bottom_sheet_t *)lv_event_get_user_data(e));
 }
@@ -208,8 +115,14 @@ static void on_click_reboot(lv_event_t *e) {
     lv_bottom_sheet_t *bs = lv_bottom_sheet_create(lv_layer_top());
     if (!bs) return;
 
-    lv_obj_t *c = reboot_sheet_body(bs, "Reboot device?",
-                                    "The device will restart now.");
+    lv_bottom_sheet_add_header(bs, "Reboot device?");
+    lv_obj_t *c = lv_bottom_sheet_get_content(bs);
+    lv_obj_set_flex_flow(c, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(c, 12, 0);
+    lv_obj_t *message = lv_label_create(c);
+    lv_obj_set_width(message, LV_PCT(100));
+    lv_label_set_long_mode(message, LV_LABEL_LONG_WRAP);
+    lv_label_set_text(message, "The device will restart now.");
     /* 横排：Cancel 左、主按钮右 */
     lv_obj_t *row = reboot_btn_row(c);
     reboot_action_btn(row, "Cancel", false, reboot_cancel_cb,  bs);
@@ -223,44 +136,34 @@ static lv_obj_t *build_general_page(struct SettingsApp *app) {
     lv_obj_t *cont = page.container;
     lv_obj_t *list = lv_list_create(cont);
     lv_obj_set_width(list, LV_PCT(100));
-    /* 同 view_home.c：不给高度就会用 lv_list_class 的默认 260px，
-     * 项一多就在列表内部滚动，而容器下面大片空着。 */
-    lv_obj_set_flex_grow(list, 1);
+    /* 列表只占三项的高度，后面的 Reboot 按钮紧跟 About。 */
+    lv_obj_set_height(list, LV_SIZE_CONTENT);
     lv_obj_set_style_pad_all(list, 0, LV_PART_MAIN);
     lv_obj_set_style_border_width(list, 0, LV_PART_MAIN);
     lv_obj_set_style_bg_opa(list, LV_OPA_TRANSP, LV_PART_MAIN);
 
-    lv_obj_t *w = lv_list_add_button(list, LV_SYMBOL_IMAGE, "Wallpaper");
+    lv_obj_t *w = lv_list_add_button(list, &ic_wallpaper, "Wallpaper");
     lv_obj_add_event_cb(w, on_click_wallpaper, LV_EVENT_CLICKED, app);
-    lv_obj_t *dt = lv_list_add_button(list, LV_SYMBOL_SETTINGS, "Date & Time");
+    lv_obj_t *dt = lv_list_add_button(list, &ic_timezone, "Date & Time");
     lv_obj_add_event_cb(dt, on_click_datetime, LV_EVENT_CLICKED, app);
-    lv_obj_t *a = lv_list_add_button(list, LV_SYMBOL_IMAGE, "About");
+    lv_obj_t *a = lv_list_add_button(list, &ic_info, "About");
     lv_obj_add_event_cb(a, on_click_about, LV_EVENT_CLICKED, app);
-
-    /* ── 底部：Reboot ──────────────────────────────────────────────────
-     * 原来是两个 120x120 的圆形按钮（Reboot / Shutdown）。改成 style guide
-     * 里的矩形描边按钮，和全 app 其它按钮统一。
-     *
-     * Shutdown 去掉了，理由见 settings_controller_shutdown() 上的注释：
-     * 这块硬件没有真正的关机，那个按钮按下去等于把设备变砖到下次物理复位，
-     * 而墨水屏还停在原画面，用户看不出发生了什么。要恢复它的话，先解决
-     * 唤醒源的问题，再在这里加回一个同样样式的按钮即可。 */
-    lv_obj_t *bottom = lv_obj_create(page.screen);
-    lv_obj_remove_style_all(bottom);
-    lv_obj_set_width(bottom, LV_PCT(100));
-    lv_obj_set_height(bottom, LV_SIZE_CONTENT);
-    lv_obj_set_style_pad_all(bottom, 16, 0);
-
-    lv_obj_t *rb = lv_button_create(bottom);
-    ui_style_set_btn_secondary(rb);          /* 透明底 + 2px 黑边，矩形 */
+    lv_obj_t *rb = lv_button_create(cont);
+    ui_style_set_btn_secondary(rb);
     lv_obj_set_size(rb, LV_PCT(100), UI_BTN_H_LARGE);
     lv_obj_set_style_shadow_width(rb, 0, 0);
+    lv_obj_set_style_margin_top(rb, 16, 0);
+    lv_obj_set_flex_flow(rb, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(rb, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(rb, 8, 0);
     lv_obj_add_event_cb(rb, on_click_reboot, LV_EVENT_CLICKED, app);
 
+    lv_obj_t *ri = lv_image_create(rb);
+    lv_image_set_src(ri, &ic_reboot);
     lv_obj_t *rt = lv_label_create(rb);
-    lv_label_set_text(rt, LV_SYMBOL_REFRESH "  Reboot");
+    lv_label_set_text(rt, "Reboot");
     lv_obj_set_style_text_font(rt, LV_FONT_SMALL, 0);
-    lv_obj_center(rt);
 
     lv_obj_add_event_cb(page.screen, settings_controller_on_general_exit,
                         LV_EVENT_DELETE, app);
@@ -429,14 +332,14 @@ static lv_obj_t *build_datetime_page(struct SettingsApp *app) {
                         LV_EVENT_VALUE_CHANGED, app);
 
     lv_obj_t *lh = lv_label_create(cont);
-    lv_label_set_text(lh, "24 Hour Time");
+    lv_label_set_text(lh, "Time Format");
     lv_obj_set_style_margin_top(lh, 16, 0);
-    lv_obj_t *sw24 = lv_switch_create(cont);
-    ui_style_set_switch(sw24);
-    lv_obj_set_width(sw24, 60);
-    if (time_service_get_format_24h()) lv_obj_add_state(sw24, LV_STATE_CHECKED);
-    else lv_obj_clear_state(sw24, LV_STATE_CHECKED);
-    lv_obj_add_event_cb(sw24, settings_controller_set_hour_24,
+    lv_obj_t *format_dd = lv_dropdown_create(cont);
+    lv_obj_set_width(format_dd, LV_PCT(100));
+    ui_style_set_dropdown(format_dd);
+    lv_dropdown_set_options(format_dd, "24-hour\n12-hour");
+    lv_dropdown_set_selected(format_dd, time_service_get_format_24h() ? 0 : 1);
+    lv_obj_add_event_cb(format_dd, settings_controller_set_hour_24,
                         LV_EVENT_VALUE_CHANGED, app);
 
     lv_obj_t *ltz = lv_label_create(cont);
@@ -445,7 +348,9 @@ static lv_obj_t *build_datetime_page(struct SettingsApp *app) {
     lv_obj_t *tz_dd = lv_dropdown_create(cont);
     lv_obj_set_width(tz_dd, LV_PCT(100));
     ui_style_set_dropdown(tz_dd);
+    lv_obj_set_style_text_font(tz_dd, LV_FONT_SMALL, LV_PART_MAIN);
     lv_dropdown_set_options(tz_dd, generate_timezone_options());
+    lv_obj_set_style_text_font(lv_dropdown_get_list(tz_dd), LV_FONT_SMALL, LV_PART_MAIN);
     uint16_t sel = 4; // default UTC+08:00
     if (app->model->datetime.timezone[0] != '\0') {
         for (uint16_t i = 0; i < epos_timezones_count; i++) {
@@ -457,65 +362,15 @@ static lv_obj_t *build_datetime_page(struct SettingsApp *app) {
     lv_obj_add_event_cb(tz_dd, settings_controller_set_timezone,
                         LV_EVENT_VALUE_CHANGED, app);
 
-    lv_obj_t *manual_title = lv_label_create(cont);
-    lv_label_set_text(manual_title, "Manual Date & Time");
-    lv_obj_set_style_margin_top(manual_title, 20, 0);
-
-    ManualTimeCtx *ctx = lv_malloc(sizeof(*ctx));
-    if (!ctx) return page.screen;
-    memset(ctx, 0, sizeof(*ctx));
-    lv_obj_add_event_cb(page.screen, manual_time_ctx_delete_cb,
-                        LV_EVENT_DELETE, ctx);
-
-    uint32_t epoch = 0;
-    struct tm local = {
-        .tm_year = 124,
-        .tm_mon = 0,
-        .tm_mday = 1,
-    };
-    if (time_service_now(&epoch)) {
-        time_t current = (time_t)epoch;
-        localtime_r(&current, &local);
-    }
-    ctx->year = manual_time_input(cont, "Year", local.tm_year + 1900,
-                                  2024, 2105);
-    ctx->month = manual_time_input(cont, "Month", local.tm_mon + 1, 1, 12);
-    ctx->day = manual_time_input(cont, "Day", local.tm_mday, 1, 31);
-    ctx->hour = manual_time_input(cont, "Hour", local.tm_hour, 0, 23);
-    ctx->minute = manual_time_input(cont, "Minute", local.tm_min, 0, 59);
-
-    ctx->status = lv_label_create(cont);
-    lv_obj_set_width(ctx->status, LV_PCT(100));
-    lv_label_set_long_mode(ctx->status, LV_LABEL_LONG_WRAP);
-    refresh_time_status(ctx->status);
-
-    lv_obj_t *sync_btn = lv_button_create(cont);
-    ui_style_set_btn_secondary(sync_btn);
-    lv_obj_set_width(sync_btn, LV_PCT(100));
-    ui_style_set_btn_size_large(sync_btn);
-    lv_obj_t *sync_label = lv_label_create(sync_btn);
-    lv_label_set_text(sync_label, "Sync time over Wi-Fi");
-    lv_obj_center(sync_label);
-    lv_obj_add_event_cb(sync_btn, sync_time_cb, LV_EVENT_CLICKED, ctx->status);
-
-    lv_obj_t *refresh_btn = lv_button_create(cont);
-    ui_style_set_btn_secondary(refresh_btn);
-    lv_obj_set_width(refresh_btn, LV_PCT(100));
-    ui_style_set_btn_size_large(refresh_btn);
-    lv_obj_t *refresh_label = lv_label_create(refresh_btn);
-    lv_label_set_text(refresh_label, "Refresh time status");
-    lv_obj_center(refresh_label);
-    lv_obj_add_event_cb(refresh_btn, refresh_time_status_cb,
-                        LV_EVENT_CLICKED, ctx->status);
-
-    lv_obj_t *set_btn = lv_button_create(cont);
-    ui_style_set_btn_primary(set_btn);
-    lv_obj_set_width(set_btn, LV_PCT(100));
-    ui_style_set_btn_size_large(set_btn);
-    lv_obj_t *set_label = lv_label_create(set_btn);
-    lv_label_set_text(set_label, "Set Date & Time");
-    lv_obj_center(set_label);
-    lv_obj_add_event_cb(set_btn, set_manual_time_cb, LV_EVENT_CLICKED, ctx);
+    lv_obj_t *manual_btn = lv_button_create(cont);
+    ui_style_set_btn_secondary(manual_btn);
+    lv_obj_set_width(manual_btn, LV_PCT(100));
+    ui_style_set_btn_size_large(manual_btn);
+    lv_obj_set_style_margin_top(manual_btn, 20, 0);
+    lv_obj_t *manual_label = lv_label_create(manual_btn);
+    lv_label_set_text(manual_label, "Manual Date & Time");
+    lv_obj_center(manual_label);
+    lv_obj_add_event_cb(manual_btn, on_click_manual_datetime, LV_EVENT_CLICKED, app);
 
     return page.screen;
 }
