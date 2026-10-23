@@ -10,5 +10,10 @@ set(EXTRA_COMPONENT_DIRS
     ${CMAKE_CURRENT_LIST_DIR}/../../drivers/ft6336
 )
 
+# Point to the DeepStoa v1 I/O expander and touch controller drivers.
+set(EXTRA_COMPONENT_DIRS
+    ${CMAKE_CURRENT_LIST_DIR}/../../drivers/ft6336
+)
+
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(t_quality)

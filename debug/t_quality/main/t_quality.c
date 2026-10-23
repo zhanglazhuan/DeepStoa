@@ -285,6 +285,7 @@ void app_main(void)
     ESP_LOGI(TAG, "Press GPIO%d to cycle: grid -> black -> white",
              BUTTON_GPIO);
 
+    bool touch_active = false;
     while (1) {
         if (button_poll_press()) {
             current = (current + 1) % PATTERN_COUNT;
