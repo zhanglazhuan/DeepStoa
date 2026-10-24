@@ -18,17 +18,23 @@ static const char *sync_error_message(AnkiSyncError error)
 {
     switch (error) {
         case ANKI_SYNC_ERR_TOO_LARGE:
-            return "File is larger than 2 MiB";
+            return "File is larger than 12 MiB";
         case ANKI_SYNC_ERR_TOO_MANY_LINES:
-            return "File exceeds 10,000 lines";
+            return "File exceeds 20,000 lines";
         case ANKI_SYNC_ERR_TOO_MANY_CARDS:
-            return "Deck exceeds 999 cards";
+            return "Deck exceeds 9999 cards";
+        case ANKI_SYNC_ERR_HISTORY_CAPACITY:
+            return "Deck history is full; restore removed cards or split the deck";
+        case ANKI_SYNC_ERR_DUPLICATE_ID:
+            return "Card IDs must be unique in this file";
         case ANKI_SYNC_ERR_FORMAT:
             return "No valid front|back cards were found";
         case ANKI_SYNC_ERR_MEMORY:
             return "Not enough memory to import";
         case ANKI_SYNC_ERR_STORAGE:
             return "Card database is unavailable";
+        case ANKI_SYNC_ERR_NO_SPACE:
+            return "Card storage is full; remove unused decks";
         case ANKI_SYNC_ERR_ID_EXHAUSTED:
             return "Card ID space is exhausted";
         default:
@@ -53,10 +59,16 @@ static void on_file_selected(const fs_selection_t *selection, void *user_data) {
 
     anki_controller_sync(app);
     char message[96];
-    snprintf(message, sizeof(message),
-             "Synced: %u new, %u updated, %u missing, %u removed, %u skipped",
-             result.added, result.updated, result.missing, result.purged,
-             result.skipped);
+    if (result.skipped) {
+        snprintf(message, sizeof(message),
+                 "Synced: %u new, %u updated, %u missing, %u skipped; first invalid line %lu",
+                 result.added, result.updated, result.missing,
+                 result.skipped, (unsigned long)result.first_skipped_line);
+    } else {
+        snprintf(message, sizeof(message),
+                 "Synced: %u new, %u updated, %u missing",
+                 result.added, result.updated, result.missing);
+    }
     lv_toast_show(message, 2500);
 
     page_navigator_navigate_pop(nav, nav->app_handler);

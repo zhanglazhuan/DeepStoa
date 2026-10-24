@@ -30,6 +30,13 @@ bool anki_storage_load_schedule(const CardIndex *card,
                                 AnkiScheduleState *schedule);
 bool anki_storage_save_schedule(const AnkiScheduleState *schedule);
 bool anki_storage_delete_schedule(uint32_t card_id);
+/* Power-loss rollback for the card index and schedule pair. History, daily
+ * counters and cursor are written separately after this core commit. */
+bool anki_storage_rating_begin(const CardIndex *previous_card,
+                               const AnkiScheduleState *previous_schedule,
+                               bool had_schedule);
+bool anki_storage_rating_finish(void);
+bool anki_storage_rating_recover(void);
 bool anki_storage_append_review(uint32_t card_id, uint32_t reviewed_at,
                                 uint16_t elapsed_days,
                                 uint16_t interval_days, uint8_t rating,

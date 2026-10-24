@@ -15,6 +15,8 @@
 #include "flash_control.h"
 #include "source_sync.h"
 #include "storage.h"
+#include "index_store.h"
+#include "blob_store.h"
 #include "trash.h"
 #include "time_service.h"
 
@@ -24,6 +26,9 @@ static const char *TAG = "anki_trash";
 #define TRASH_MAX_ENTRIES ANKI_MAX_DECK_CAPACITY
 #define TRASH_RETENTION_SECONDS (ANKI_TRASH_RETENTION_DAYS * UINT32_C(86400))
 #define TRASH_DIRECTORY_SCAN_MAX 1024U
+#define TRASH_DELETING_MAGIC UINT32_C(0x44454C54)
+_Static_assert(sizeof(AnkiTrashEntry) == 328,
+               "Trash storage layout changed; migrate versioned catalog first");
 
 typedef struct {
     char path[sizeof(((AnkiDeck *)0)->sd_file_path)];
@@ -74,38 +79,22 @@ static AnkiTrashEntry *load_entries(uint16_t *count, bool *ok)
 {
     *ok = false;
     *count = 0;
-    struct fdb_blob blob;
-    fdb_kv_get_blob(&g_kvdb, TRASH_KEY, fdb_blob_make(&blob, NULL, 0));
-    size_t len = blob.saved.len;
-    if (len == 0) {
-        *ok = true;
-        return NULL;
-    }
-    if (len % sizeof(AnkiTrashEntry) != 0 ||
-        len > sizeof(AnkiTrashEntry) * TRASH_MAX_ENTRIES) {
-        ESP_LOGE(TAG, "invalid recycle-bin metadata length: %u", (unsigned)len);
-        return NULL;
-    }
-
-    AnkiTrashEntry *entries = malloc(len);
+    AnkiTrashEntry *entries = calloc(TRASH_MAX_ENTRIES, sizeof(*entries));
     if (!entries) return NULL;
-    if (fdb_kv_get_blob(&g_kvdb, TRASH_KEY,
-                        fdb_blob_make(&blob, entries, len)) != len) {
+    if (!anki_blob_load(TRASH_KEY, "at", sizeof(*entries),
+                        TRASH_MAX_ENTRIES, entries, count)) {
         free(entries);
         return NULL;
     }
-    *count = (uint16_t)(len / sizeof(*entries));
     *ok = true;
+    if (*count == 0) { free(entries); return NULL; }
     return entries;
 }
 
 static bool save_entries(const AnkiTrashEntry *entries, uint16_t count)
 {
-    if (count == 0) return fdb_kv_del(&g_kvdb, TRASH_KEY) == FDB_NO_ERR;
-    struct fdb_blob blob;
-    return fdb_kv_set_blob(&g_kvdb, TRASH_KEY,
-                           fdb_blob_make(&blob, entries,
-                                         count * sizeof(*entries))) == FDB_NO_ERR;
+    return anki_blob_save(TRASH_KEY, "at", sizeof(AnkiTrashEntry),
+                          TRASH_MAX_ENTRIES, entries, count);
 }
 
 static bool ensure_directory(const char *path)
@@ -166,23 +155,12 @@ static bool delete_key_if_present(const char *key)
 
 static bool delete_card_data(uint32_t deck_id)
 {
-    char key[32];
-    snprintf(key, sizeof(key), "anki_cards_%u", (unsigned)deck_id);
-
-    struct fdb_blob blob;
-    fdb_kv_get_blob(&g_kvdb, key, fdb_blob_make(&blob, NULL, 0));
-    size_t len = blob.saved.len;
-    if (len > 0 && len % sizeof(CardIndex) == 0 &&
-        len <= sizeof(CardIndex) * ANKI_MAX_CARDS_PER_DECK) {
-        CardIndex *cards = malloc(len);
-        if (!cards) return false;
-        if (fdb_kv_get_blob(&g_kvdb, key,
-                            fdb_blob_make(&blob, cards, len)) != len) {
-            free(cards);
-            return false;
-        }
-        size_t count = len / sizeof(*cards);
+    CardIndex *cards = NULL;
+    uint16_t count = 0;
+    if (!anki_index_load_cards(deck_id, &cards, &count)) return false;
+    if (count > 0) {
         for (size_t i = 0; i < count; i++) {
+            if ((i & 31U) == 0) vTaskDelay(1);
             char payload_key[32];
             snprintf(payload_key, sizeof(payload_key), "anki_payload_%u",
                      (unsigned)cards[i].card_id);
@@ -195,9 +173,7 @@ static bool delete_card_data(uint32_t deck_id)
         free(cards);
     }
 
-    if (!delete_key_if_present(key)) return false;
-    snprintf(key, sizeof(key), "anki_src_%u", (unsigned)deck_id);
-    return delete_key_if_present(key);
+    return anki_index_delete(deck_id);
 }
 
 bool anki_trash_recycle_deck(AnkiModel *model, int deck_idx)
@@ -372,7 +348,8 @@ size_t anki_trash_group_count(void)
     if (!entries_ok) return 0;
     size_t groups = 0;
     for (uint16_t i = 0; i < count; i++) {
-        if (entries[i].deck.deck_id == entries[i].group_id) groups++;
+        if (entries[i].deck.deck_id == entries[i].group_id &&
+            entries[i].deletion_marker != TRASH_DELETING_MAGIC) groups++;
     }
     free(entries);
     return groups;
@@ -388,7 +365,8 @@ bool anki_trash_get_group(size_t index, AnkiTrashEntry *entry)
     size_t group_index = 0;
     bool found = false;
     for (uint16_t i = 0; i < count; i++) {
-        if (entries[i].deck.deck_id != entries[i].group_id) continue;
+        if (entries[i].deck.deck_id != entries[i].group_id ||
+            entries[i].deletion_marker == TRASH_DELETING_MAGIC) continue;
         if (group_index++ == index) {
             *entry = entries[i];
             found = true;
@@ -438,7 +416,13 @@ static bool restore_group(AnkiModel *model, uint32_t group_id, bool as_copy)
     if (!entries_ok) return false;
     uint16_t group_count = 0;
     for (uint16_t i = 0; i < count; i++) {
-        if (entries[i].group_id == group_id) group_count++;
+        if (entries[i].group_id == group_id) {
+            if (entries[i].deletion_marker == TRASH_DELETING_MAGIC) {
+                free(entries);
+                return false;
+            }
+            group_count++;
+        }
     }
     if (group_count == 0 || model->deck_count + group_count > ANKI_MAX_DECK_CAPACITY) {
         free(entries);
@@ -581,17 +565,20 @@ bool anki_trash_delete_group_permanently(uint32_t group_id)
     if (!entries_ok) return false;
     bool found = false;
 
+    bool needs_mark = false;
     for (uint16_t i = 0; i < count; i++) {
         if (entries[i].group_id != group_id) continue;
         found = true;
-        if (entries[i].trash_path[0] && unlink(entries[i].trash_path) != 0 &&
-            errno != ENOENT) {
-            ESP_LOGE(TAG, "cannot delete %s: errno=%d", entries[i].trash_path, errno);
-            free(entries);
-            return false;
+        if (entries[i].deletion_marker != TRASH_DELETING_MAGIC) {
+            entries[i].deletion_marker = TRASH_DELETING_MAGIC;
+            needs_mark = true;
         }
     }
     if (!found) {
+        free(entries);
+        return false;
+    }
+    if (needs_mark && !save_entries(entries, count)) {
         free(entries);
         return false;
     }
@@ -599,6 +586,16 @@ bool anki_trash_delete_group_permanently(uint32_t group_id)
     for (uint16_t i = 0; i < count; i++) {
         if (entries[i].group_id == group_id &&
             !delete_card_data(entries[i].deck.deck_id)) {
+            free(entries);
+            return false;
+        }
+    }
+
+    for (uint16_t i = 0; i < count; i++) {
+        if (entries[i].group_id != group_id) continue;
+        if (entries[i].trash_path[0] && unlink(entries[i].trash_path) != 0 &&
+            errno != ENOENT) {
+            ESP_LOGE(TAG, "cannot delete %s: errno=%d", entries[i].trash_path, errno);
             free(entries);
             return false;
         }
@@ -632,16 +629,29 @@ bool anki_trash_factory_reset(void)
     bool entries_ok;
     AnkiTrashEntry *entries = load_entries(&count, &entries_ok);
     if (!entries_ok) {
-        return delete_key_if_present(TRASH_KEY);
+        ESP_LOGE(TAG, "Cannot reset a damaged recycle-bin catalog safely");
+        return false;
+    }
+
+    bool needs_mark = false;
+    for (uint16_t i = 0; i < count; i++) {
+        if (entries[i].deletion_marker != TRASH_DELETING_MAGIC) {
+            entries[i].deletion_marker = TRASH_DELETING_MAGIC;
+            needs_mark = true;
+        }
+    }
+    if (needs_mark && !save_entries(entries, count)) {
+        free(entries);
+        return false;
     }
 
     bool ok = true;
     for (uint16_t i = 0; i < count; i++) {
+        if (!delete_card_data(entries[i].deck.deck_id)) ok = false;
         if (entries[i].trash_path[0] &&
             unlink(entries[i].trash_path) != 0 && errno != ENOENT) {
             ok = false;
         }
-        if (!delete_card_data(entries[i].deck.deck_id)) ok = false;
     }
     for (uint16_t i = 0; i < count; i++) {
         if (entries[i].deck.deck_id == entries[i].group_id) {
@@ -649,8 +659,9 @@ bool anki_trash_factory_reset(void)
         }
     }
     free(entries);
-    if (!delete_key_if_present(TRASH_KEY)) ok = false;
-    return ok;
+    if (!ok) return false;
+    return anki_blob_delete(TRASH_KEY, "at", sizeof(AnkiTrashEntry),
+                            TRASH_MAX_ENTRIES);
 }
 
 static uint16_t scan_active_sources(const AnkiModel *model,
@@ -808,6 +819,8 @@ void anki_trash_reconcile_external_restores(AnkiModel *model)
 
             for (uint16_t i = 0; i < count; i++) {
                 if (entries[i].group_id != group_id) continue;
+                if (entries[i].deletion_marker == TRASH_DELETING_MAGIC)
+                    eligible = false;
                 group_count++;
                 for (int active = 0; active < model->deck_count; active++) {
                     if (model->decks[active].deck_id == entries[i].deck.deck_id) {
@@ -980,7 +993,6 @@ void anki_trash_cleanup_expired(AnkiModel *model)
 {
     (void)model;
     uint32_t now = current_valid_time();
-    if (now == 0) return;
 
     uint16_t count = 0;
     bool entries_ok;
@@ -988,7 +1000,7 @@ void anki_trash_cleanup_expired(AnkiModel *model)
     if (!entries_ok) return;
     bool timestamps_changed = false;
     for (uint16_t i = 0; i < count; i++) {
-        if (entries[i].deleted_at == 0) {
+        if (now && entries[i].deleted_at == 0) {
             entries[i].deleted_at = now;
             timestamps_changed = true;
         }
@@ -1001,9 +1013,10 @@ void anki_trash_cleanup_expired(AnkiModel *model)
     uint32_t expired[ANKI_MAX_DECK_CAPACITY];
     uint16_t expired_count = 0;
     for (uint16_t i = 0; i < count; i++) {
-        if (entries[i].deck.deck_id != entries[i].group_id ||
-            now < entries[i].deleted_at ||
-            now - entries[i].deleted_at < TRASH_RETENTION_SECONDS) continue;
+        if (entries[i].deck.deck_id != entries[i].group_id) continue;
+        if (entries[i].deletion_marker != TRASH_DELETING_MAGIC &&
+            (!now || now < entries[i].deleted_at ||
+             now - entries[i].deleted_at < TRASH_RETENTION_SECONDS)) continue;
         expired[expired_count++] = entries[i].group_id;
     }
     free(entries);

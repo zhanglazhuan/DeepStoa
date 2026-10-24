@@ -109,7 +109,6 @@ static lv_obj_t* build_home_page(TodoListApp* app) {
     /* 用 Page 暴露的槽位，别再靠 lv_obj_get_child(header, 2) 这种魔法索引 ——
      * lv_page 的 header 结构一变就会静默错位 */
     lv_obj_t* right_slot = page.header_right;
-    lv_obj_set_style_margin_right(right_slot, 8, 0); /* 菜单按钮右边距增加 8px */
     lv_obj_t* right_icon = lv_label_create(right_slot);
     lv_label_set_text(right_icon, LV_SYMBOL_BARS); // 添加菜单图标
     lv_obj_center(right_icon); // 在预留的 40x40 槽位中居中图标

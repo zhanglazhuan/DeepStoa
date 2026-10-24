@@ -10,9 +10,11 @@
 #include "../view.h"
 #include "../app.h"
 #include "../model.h"
+#include "../controller.h"
 #include "../trash.h"
 
 static const char *TAG = "anki_view_decks";
+LV_IMAGE_DECLARE(ic_more);
 
 // --- 定义传给 Deck Form 的 Payload ---
 typedef enum {
@@ -437,7 +439,7 @@ static lv_obj_t * view_create_deck_row(lv_obj_t *parent, AnkiDeck *deck, int dec
     int depth = anki_model_get_deck_depth(app->model, deck->parent_id);
     int pad_left = 12 + (depth * 24);
     lv_obj_set_style_pad_left(row, pad_left, 0);
-    lv_obj_set_style_pad_right(row, 12, 0);
+    lv_obj_set_style_pad_right(row, 6, 0);
     lv_obj_set_style_pad_column(row, 12, 0); 
 
     // 整行只有一个主动作：点击进入学习。破坏性操作统一放到右侧菜单。
@@ -470,8 +472,8 @@ static lv_obj_t * view_create_deck_row(lv_obj_t *parent, AnkiDeck *deck, int dec
     lv_obj_set_style_text_align(cards_label, LV_TEXT_ALIGN_RIGHT, 0);
     
     // More 按钮
-    lv_obj_t * more_icon = lv_label_create(row);
-    lv_label_set_text(more_icon, LV_SYMBOL_BARS); // 标准齿轮图标，你也可以换成 LV_SYMBOL_LIST 等
+    lv_obj_t * more_icon = lv_image_create(row);
+    lv_image_set_src(more_icon, &ic_more);
     lv_obj_set_ext_click_area(more_icon, 15);
     lv_obj_add_flag(more_icon, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(more_icon, deck_more_sheet_cb, LV_EVENT_CLICKED, app);
@@ -508,6 +510,7 @@ static void view_decks_refresh_list(AnkiApp *app) {
 // 页面构建主入口
 // ==========================================
 static lv_obj_t* build_decks_page(AnkiApp* app, void* user_data) {
+    anki_controller_sync(app);
     Page page = lv_page_create("eAnki", false, NULL, &app->view->page_nav);
 
     // 申请上下文
@@ -525,7 +528,7 @@ static lv_obj_t* build_decks_page(AnkiApp* app, void* user_data) {
     app->view->page_nav.nav_ctx = decks_ctx;
 
     // 1. Header 菜单图标
-    lv_obj_t *right_slot = lv_obj_get_child(page.header, 2);
+    lv_obj_t *right_slot = page.header_right;
     lv_obj_t *menu_btn = lv_btn_create(right_slot);
     lv_obj_set_size(menu_btn, LV_PCT(100), LV_PCT(100)); // 让按钮完全填满 40x40 的右侧预留槽位
     lv_obj_set_ext_click_area(menu_btn, 15);
@@ -536,7 +539,8 @@ static lv_obj_t* build_decks_page(AnkiApp* app, void* user_data) {
     lv_obj_center(menu_btn);
     
     lv_obj_t *menu_icon = lv_label_create(menu_btn);
-    lv_label_set_text(menu_icon, LV_SYMBOL_SETTINGS); 
+    lv_label_set_text(menu_icon, LV_SYMBOL_BARS);
+    lv_obj_center(menu_icon);
     lv_obj_add_event_cb(menu_btn, open_global_menu_sheet_event_cb, LV_EVENT_CLICKED, app);
 
     // 2. 卡片列表容器 (使用 Flex Column 替代原先的 lv_list)

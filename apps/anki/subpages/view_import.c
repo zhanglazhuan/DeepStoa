@@ -28,6 +28,13 @@ static lv_obj_t* build_import_page(AnkiApp* app, void* user_data) {
     lv_label_set_text(sd_btn_label, "Card file (.txt)");
     lv_obj_center(sd_btn_label);
 
+    lv_obj_t *format = lv_label_create(import_cont);
+    lv_obj_set_width(format, LV_PCT(98));
+    lv_label_set_long_mode(format, LV_LABEL_LONG_WRAP);
+    lv_label_set_text(format,
+        "One card per line: front|back. Use @id=key front|back to keep "
+        "study progress when editing the front. IDs must be unique.");
+
     return page.screen;
 }
 

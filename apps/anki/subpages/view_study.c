@@ -104,6 +104,12 @@ void anki_view_study_show_finished_msgbox(AnkiApp *app)
     } else if (app->model->study_stop_reason == ANKI_STUDY_STOP_CLOCK) {
         title = "Date and Time Required";
         message = "Set the device date and time before studying scheduled cards.";
+    } else if (app->model->study_stop_reason == ANKI_STUDY_STOP_STORAGE) {
+        title = "Card Database Error";
+        message = "Unable to read this deck. Check storage and try again.";
+    } else if (app->model->study_stop_reason == ANKI_STUDY_STOP_MEMORY) {
+        title = "Not Enough Memory";
+        message = "Close other apps and try studying again.";
     }
     lv_obj_t *c = study_sheet_body(bs, title, message);
     /* 只有一个动作，仍然靠右 —— 主按钮位置和其它弹层保持一致 */
@@ -210,6 +216,7 @@ static lv_obj_t* build_study_page(AnkiApp* app, void* user_data) {
     lv_obj_t *lbl_answer = lv_label_create(content);
     lv_label_set_text(lbl_answer, payload->back);
     lv_obj_set_width(lbl_answer, LV_PCT(100));
+    lv_label_set_long_mode(lbl_answer, LV_LABEL_LONG_WRAP);
     lv_obj_set_style_text_align(lbl_answer, LV_TEXT_ALIGN_LEFT, 0);
     study_ctx->lbl_answer = lbl_answer;
 

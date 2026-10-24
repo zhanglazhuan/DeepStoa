@@ -12,6 +12,7 @@
 #include "../storage.h"
 #include "../view.h"
 #include "time_service.h"
+#include "widgets/lv_toast.h"
 
 #include "esp_log.h"
 
@@ -46,6 +47,10 @@ static bool preview_current(AnkiApp *app, AnkiScheduleOutcome outcomes[4])
 void anki_controller_on_show_answer(lv_event_t *e)
 {
     AnkiApp *app = lv_event_get_user_data(e);
+    if (app && app->model && app->model->storage_fault) {
+        lv_toast_show("Card storage needs recovery; reopen Anki", 3000);
+        return;
+    }
     if (!app || !app->model || !app->model->current_card_available) return;
     app->model->is_showing_answer = true;
     anki_view_study_card_flip(app);
@@ -80,6 +85,10 @@ void anki_controller_study_format_labels(AnkiApp *app,
 void anki_controller_on_rate_card(lv_event_t *e)
 {
     AnkiApp *app = lv_event_get_user_data(e);
+    if (app && app->model && app->model->storage_fault) {
+        lv_toast_show("Card storage needs recovery; reopen Anki", 3000);
+        return;
+    }
     if (!app || !app->model || !app->model->current_card_available ||
         !app->model->is_showing_answer || app->model->rating_in_progress ||
         app->model->active_card_idx < 0 ||
@@ -102,6 +111,12 @@ void anki_controller_on_rate_card(lv_event_t *e)
     AnkiScheduleOutcome *selected = &outcomes[rating - 1];
 
     CardIndex previous_card = *card;
+    if (!anki_storage_rating_begin(&previous_card, &previous_schedule,
+                                   had_schedule)) {
+        lv_toast_show("Could not start rating save; please retry", 3000);
+        app->model->rating_in_progress = false;
+        return;
+    }
     card->status = selected->card_status;
     card->due_timestamp = selected->due_at;
     card->interval = selected->interval_days > UINT8_MAX
@@ -111,10 +126,27 @@ void anki_controller_on_rate_card(lv_event_t *e)
     if (!anki_storage_save_schedule(&selected->schedule) ||
         !anki_model_update_card(app->model, card)) {
         *card = previous_card;
-        if (had_schedule) anki_storage_save_schedule(&previous_schedule);
-        else anki_storage_delete_schedule(card->card_id);
+        bool restored_schedule = had_schedule
+            ? anki_storage_save_schedule(&previous_schedule)
+            : anki_storage_delete_schedule(card->card_id);
+        bool restored_card = anki_model_update_card(app->model, card);
+        if (!restored_schedule || !restored_card ||
+            !anki_storage_rating_finish()) app->model->storage_fault = true;
         ESP_LOGE(TAG, "Failed to persist rating for card %u",
                  (unsigned)card->card_id);
+        lv_toast_show("Could not save rating; please retry", 3000);
+        app->model->rating_in_progress = false;
+        return;
+    }
+    if (!anki_storage_rating_finish()) {
+        *card = previous_card;
+        bool restored_schedule = had_schedule
+            ? anki_storage_save_schedule(&previous_schedule)
+            : anki_storage_delete_schedule(card->card_id);
+        bool restored_card = anki_model_update_card(app->model, card);
+        if (!restored_schedule || !restored_card ||
+            !anki_storage_rating_finish()) app->model->storage_fault = true;
+        lv_toast_show("Could not finish rating save; please retry", 3000);
         app->model->rating_in_progress = false;
         return;
     }
@@ -133,14 +165,18 @@ void anki_controller_on_rate_card(lv_event_t *e)
             (uint8_t)rating, previous_status, selected->card_status)) {
         ESP_LOGW(TAG, "Review history not saved for card %u",
                  (unsigned)card->card_id);
+        lv_toast_show("Rating saved, but review history was not", 3000);
     }
 
-    anki_model_record_answer(app->model, card->deck_id,
-        previous_status == ANKI_CARD_STATUS_NEW,
-        previous_status == ANKI_CARD_STATUS_REVIEW);
+    if (!anki_model_record_answer(app->model, card->deck_id,
+            previous_status == ANKI_CARD_STATUS_NEW,
+            previous_status == ANKI_CARD_STATUS_REVIEW)) {
+        lv_toast_show("Rating saved, but daily progress was not", 3000);
+    }
     app->model->active_card_idx++;
-    anki_storage_sync_meta(app->model);
-    anki_controller_sync(app);
+    if (!anki_storage_sync_meta(app->model)) {
+        lv_toast_show("Rating saved, but study position was not", 3000);
+    }
 
     if (!anki_model_load_next_card(app->model)) {
         anki_view_study_show_finished_msgbox(app);

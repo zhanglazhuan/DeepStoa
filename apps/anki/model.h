@@ -6,7 +6,7 @@
 
 #define ANKI_MAX_DECK_DEPTH 3
 #define ANKI_MAX_DECK_CAPACITY 99
-#define ANKI_MAX_CARDS_PER_DECK 999
+#define ANKI_MAX_CARDS_PER_DECK 9999
 #define ANKI_INITIAL_QUEUE_CAPACITY 50
 
 #define ANKI_CARD_STATUS_NEW      0U
@@ -68,6 +68,8 @@ typedef enum {
     ANKI_STUDY_STOP_COMPLETE = 0,
     ANKI_STUDY_STOP_DURATION,
     ANKI_STUDY_STOP_CLOCK,
+    ANKI_STUDY_STOP_STORAGE,
+    ANKI_STUDY_STOP_MEMORY,
 } AnkiStudyStopReason;
 
 typedef struct AnkiModel {
@@ -134,7 +136,7 @@ int anki_model_get_tree_unlearned_cards(AnkiModel *model, int deck_idx);
 // 更新某个具体的卡片状态到 FlashDB 中持久化
 bool anki_model_update_card(AnkiModel *model, CardIndex *card);
 void anki_model_begin_study(AnkiModel *model);
-void anki_model_record_answer(AnkiModel *model, uint32_t deck_id,
+bool anki_model_record_answer(AnkiModel *model, uint32_t deck_id,
                               bool was_new, bool was_review);
 void anki_model_get_daily_counts(AnkiModel *model, int root_deck_idx,
                                  uint16_t *new_cards,

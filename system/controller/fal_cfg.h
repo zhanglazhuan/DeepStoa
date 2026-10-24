@@ -4,7 +4,7 @@
 // 两块独立的 FlashDB 区域，对应 partitions.csv 里的两个 esp_partition：
 //   fdb_sys   0x8000  (32K)  厂家数据：机器码、序列号、出厂标定。
 //                            产线单独刷入，恢复出厂设置**不擦**。
-//   fdb_user  0x20000 (128K) 用户数据：Wi-Fi 凭据、各 app 的设置和使用记录。
+//   fdb_user  0x400000 (4MB) 用户数据：Wi-Fi 凭据、各 app 的设置和使用记录。
 //                            恢复出厂设置擦掉这一块。
 //
 // 之所以做成两个 esp_partition 而不是一块里划两段：产线要能用
@@ -30,7 +30,7 @@ extern const struct fal_flash_dev nor_flash_user;
     {FAL_PART_MAGIC_WORD, "fdb_sys",  NOR_FLASH_SYS_NAME,           \
      0, 32 * 1024, 0},                                              \
     {FAL_PART_MAGIC_WORD, "fdb_user", NOR_FLASH_USER_NAME,          \
-     0, 128 * 1024, 0},                                             \
+     0, 4 * 1024 * 1024, 0},                                        \
 }
 
 #define FAL_PART_HAS_TABLE_CFG

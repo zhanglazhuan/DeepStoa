@@ -508,7 +508,6 @@ static lv_obj_t* build_chat_page(struct ChatApp* app, void* user_data) {
      * 这种魔法索引 —— lv_page 的 header 结构一变就会静默错位。 */
     lv_obj_t *right_slot = page.header_right;
     if (right_slot) {
-        lv_obj_set_style_margin_right(right_slot, 8, 0);
         lv_obj_t *menu_icon = lv_label_create(right_slot);
         lv_label_set_text(menu_icon, LV_SYMBOL_BARS);
         lv_obj_center(menu_icon);

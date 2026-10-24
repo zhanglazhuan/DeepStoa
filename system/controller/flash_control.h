@@ -23,7 +23,7 @@ extern struct fdb_kvdb g_kvdb;       /* 用户区，恢复出厂设置会擦 */
 extern struct fdb_kvdb g_sys_kvdb;   /* 厂家区，恢复出厂设置保留 */
 
 // Initialize flashDB (FAL + both KVDBs). Call once at boot, before any fdb_kv_*.
-void flash_control_init(void);
+bool flash_control_init(void);
 void flash_control_deinit(void);
 
 /* ── 厂家区读写 ────────────────────────────────────────────────────────

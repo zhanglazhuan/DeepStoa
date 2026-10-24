@@ -3,10 +3,13 @@
 #include "../app.h"
 #include "../model.h"
 #include "../storage.h"
+#include "widgets/lv_toast.h"
 
 static const char *TAG = "anki_controller_settings";
 static AnkiSettings *editable_settings(AnkiApp *app);
-static void save_editable_settings(AnkiApp *app);
+static void save_editable_settings(AnkiApp *app,
+                                   const AnkiSettings *previous,
+                                   bool was_custom);
 static int clamp_value(int value, int minimum, int maximum);
 
 // 修改原有的 task_plan 回调
@@ -16,8 +19,11 @@ void anki_controller_settings_new_cards_changed(lv_event_t *e) {
     
     AnkiSettings *settings = editable_settings(app);
     if (!settings) return;
+    AnkiSettings previous = *settings;
+    bool was_custom = app->model->target_deck_idx < 0 ||
+        app->model->decks[app->model->target_deck_idx].has_custom_settings;
     settings->new_cards_daily = clamp_value(val, 0, 999);
-    save_editable_settings(app);
+    save_editable_settings(app, &previous, was_custom);
     ESP_LOGI(TAG, "New cards/day updated to %d",
              settings->new_cards_daily);
 }
@@ -29,8 +35,11 @@ void anki_controller_settings_max_cards_changed(lv_event_t *e) {
     
     AnkiSettings *settings = editable_settings(app);
     if (!settings) return;
+    AnkiSettings previous = *settings;
+    bool was_custom = app->model->target_deck_idx < 0 ||
+        app->model->decks[app->model->target_deck_idx].has_custom_settings;
     settings->max_cards_daily = clamp_value(val, 0, 9999);
-    save_editable_settings(app);
+    save_editable_settings(app, &previous, was_custom);
     ESP_LOGI(TAG, "Maximum reviews/day updated to %d",
              settings->max_cards_daily);
 }
@@ -41,8 +50,11 @@ void anki_controller_settings_study_duration_changed(lv_event_t *e) {
     
     AnkiSettings *settings = editable_settings(app);
     if (!settings) return;
+    AnkiSettings previous = *settings;
+    bool was_custom = app->model->target_deck_idx < 0 ||
+        app->model->decks[app->model->target_deck_idx].has_custom_settings;
     settings->study_duration_mins = clamp_value(val, 0, 1440);
-    save_editable_settings(app);
+    save_editable_settings(app, &previous, was_custom);
 }
 
 void anki_controller_settings_advance_study_changed(lv_event_t *e) {
@@ -51,8 +63,11 @@ void anki_controller_settings_advance_study_changed(lv_event_t *e) {
     
     AnkiSettings *settings = editable_settings(app);
     if (!settings) return;
+    AnkiSettings previous = *settings;
+    bool was_custom = app->model->target_deck_idx < 0 ||
+        app->model->decks[app->model->target_deck_idx].has_custom_settings;
     settings->allow_study_ahead = is_on;
-    save_editable_settings(app);
+    save_editable_settings(app, &previous, was_custom);
 }
 
 static int clamp_value(int value, int minimum, int maximum)
@@ -72,16 +87,28 @@ static AnkiSettings *editable_settings(AnkiApp *app)
         app->model->decks[deck_idx].custom_settings =
             app->model->global_settings;
     }
-    app->model->decks[deck_idx].has_custom_settings = true;
     return &app->model->decks[deck_idx].custom_settings;
 }
 
-static void save_editable_settings(AnkiApp *app)
+static void save_editable_settings(AnkiApp *app,
+                                   const AnkiSettings *previous,
+                                   bool was_custom)
 {
+    bool saved;
     if (app->model->target_deck_idx < 0) {
-        anki_storage_sync_global_settings(app->model);
+        saved = anki_storage_sync_global_settings(app->model);
     } else {
-        anki_storage_sync_decks(app->model);
+        app->model->decks[app->model->target_deck_idx].has_custom_settings = true;
+        saved = anki_storage_sync_decks(app->model);
+    }
+    if (!saved) {
+        AnkiSettings *settings = editable_settings(app);
+        if (settings) *settings = *previous;
+        if (app->model->target_deck_idx >= 0) {
+            app->model->decks[app->model->target_deck_idx].has_custom_settings =
+                was_custom;
+        }
+        lv_toast_show("Could not save Anki settings", 3000);
     }
 }
 
@@ -89,27 +116,36 @@ void anki_controller_settings_retention_changed(lv_event_t *e) {
     AnkiApp *app = lv_event_get_user_data(e);
     AnkiSettings *settings = editable_settings(app);
     if (!settings) return;
+    AnkiSettings previous = *settings;
+    bool was_custom = app->model->target_deck_idx < 0 ||
+        app->model->decks[app->model->target_deck_idx].has_custom_settings;
     settings->desired_retention_percent = clamp_value(
         (int)(intptr_t)lv_event_get_param(e), 70, 97);
-    save_editable_settings(app);
+    save_editable_settings(app, &previous, was_custom);
 }
 
 void anki_controller_settings_learning_step_changed(lv_event_t *e) {
     AnkiApp *app = lv_event_get_user_data(e);
     AnkiSettings *settings = editable_settings(app);
     if (!settings) return;
+    AnkiSettings previous = *settings;
+    bool was_custom = app->model->target_deck_idx < 0 ||
+        app->model->decks[app->model->target_deck_idx].has_custom_settings;
     settings->learning_step_minutes = clamp_value(
         (int)(intptr_t)lv_event_get_param(e), 1, 720);
-    save_editable_settings(app);
+    save_editable_settings(app, &previous, was_custom);
 }
 
 void anki_controller_settings_relearning_step_changed(lv_event_t *e) {
     AnkiApp *app = lv_event_get_user_data(e);
     AnkiSettings *settings = editable_settings(app);
     if (!settings) return;
+    AnkiSettings previous = *settings;
+    bool was_custom = app->model->target_deck_idx < 0 ||
+        app->model->decks[app->model->target_deck_idx].has_custom_settings;
     settings->relearning_step_minutes = clamp_value(
         (int)(intptr_t)lv_event_get_param(e), 1, 720);
-    save_editable_settings(app);
+    save_editable_settings(app, &previous, was_custom);
 }
 
 AnkiSettings* anki_controller_settings_get_config(AnkiApp *app) {

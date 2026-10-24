@@ -9,6 +9,7 @@
 #include "app.h"
 #include "source_sync.h"
 #include "storage.h"
+#include "index_store.h"
 #include "trash.h"
 #include "time_service.h"
 
@@ -59,7 +60,9 @@ bool anki_model_init(AnkiApp *app) {
     if (!app->model->today_queue) { free(app->model->decks); free(app->model); app->model = NULL; return false; }
     memset(app->model->today_queue, 0, sizeof(CardIndex) * ANKI_INITIAL_QUEUE_CAPACITY);
 
+    bool recovered = anki_storage_rating_recover();
     anki_storage_load_all(app->model);
+    if (!recovered) app->model->storage_fault = true;
     if (!app->model->storage_fault) {
         anki_trash_reconcile_external_restores(app->model);
         if (!app->model->storage_fault) {
@@ -71,6 +74,7 @@ bool anki_model_init(AnkiApp *app) {
 }
 
 void anki_model_deinit(AnkiApp *app) {
+    anki_index_cache_clear();
     if (app->model) {
         if (app->model->decks) free(app->model->decks);
         if (app->model->today_queue) free(app->model->today_queue);
@@ -133,28 +137,28 @@ static int compare_queue_cards(const CardIndex *left, const CardIndex *right)
     return lh < rh ? -1 : lh > rh ? 1 : 0;
 }
 
-static bool insert_queue_card(AnkiModel *model, const CardIndex *card,
-                              uint16_t capacity)
+static bool insert_queue_card(CardIndex *queue, uint16_t *queue_count,
+                              const CardIndex *card, uint16_t capacity)
 {
     if (capacity == 0) return false;
     uint16_t position = 0;
-    while (position < model->queue_count &&
-           compare_queue_cards(&model->today_queue[position], card) <= 0) {
+    while (position < *queue_count &&
+           compare_queue_cards(&queue[position], card) <= 0) {
         position++;
     }
-    if (model->queue_count >= capacity && position >= capacity) return false;
+    if (*queue_count >= capacity && position >= capacity) return false;
 
-    uint16_t count = model->queue_count < capacity
-        ? model->queue_count + 1 : model->queue_count;
+    uint16_t count = *queue_count < capacity
+        ? *queue_count + 1 : *queue_count;
     if (position < count) {
         uint16_t move = count - position - 1;
         if (move > 0) {
-            memmove(&model->today_queue[position + 1],
-                    &model->today_queue[position], move * sizeof(CardIndex));
+            memmove(&queue[position + 1], &queue[position],
+                    move * sizeof(CardIndex));
         }
-        model->today_queue[position] = *card;
+        queue[position] = *card;
     }
-    model->queue_count = count;
+    *queue_count = count;
     return true;
 }
 
@@ -167,52 +171,65 @@ static AnkiSettings *settings_for_deck_index(AnkiModel *model, int deck_idx)
     return &model->global_settings;
 }
 
-static void collect_queue_pass(AnkiModel *model, uint32_t root_id,
-                               uint32_t now, int kind,
-                               uint16_t capacity, bool allow_ahead)
+static bool collect_queue(AnkiModel *model, uint32_t root_id,
+                          uint32_t now, uint16_t review_remaining,
+                          uint16_t new_remaining, bool allow_ahead)
 {
     uint32_t deadline = allow_ahead && now <= UINT32_MAX - 86400U
         ? now + 86400U : now;
+    const uint16_t capacity = ANKI_INITIAL_QUEUE_CAPACITY;
+    CardIndex *buckets = calloc(3U * capacity, sizeof(*buckets));
+    if (!buckets) {
+        model->study_stop_reason = ANKI_STUDY_STOP_MEMORY;
+        return false;
+    }
+    uint16_t counts[3] = {0};
     for (int i = 0; i < model->deck_count; i++) {
         if (!is_deck_in_tree(model, model->decks[i].deck_id, root_id)) continue;
-        char key[32];
-        snprintf(key, sizeof(key), "anki_cards_%u",
-                 (unsigned)model->decks[i].deck_id);
-        struct fdb_blob blob;
-        fdb_kv_get_blob(&g_kvdb, key, fdb_blob_make(&blob, NULL, 0));
-        size_t len = blob.saved.len;
-        if (len == 0 || len % sizeof(CardIndex) != 0 ||
-            len > sizeof(CardIndex) * ANKI_MAX_CARDS_PER_DECK) continue;
-
-        CardIndex *cards = malloc(len);
-        if (!cards) continue;
-        if (fdb_kv_get_blob(&g_kvdb, key,
-                            fdb_blob_make(&blob, cards, len)) != len) {
-            free(cards);
-            continue;
+        CardIndex *cards = NULL;
+        uint16_t count = 0;
+        if (!anki_index_load_cards(model->decks[i].deck_id, &cards, &count)) {
+            free(buckets);
+            model->study_stop_reason = ANKI_STUDY_STOP_STORAGE;
+            return false;
         }
-        size_t count = len / sizeof(*cards);
         for (size_t c = 0; c < count; c++) {
             if (cards[c].status & ANKI_CARD_FLAG_MISSING) continue;
             uint8_t status = cards[c].status & ANKI_CARD_STATUS_MASK;
-            bool eligible = kind == 2
-                ? status == ANKI_CARD_STATUS_NEW
-                : kind == 1
-                    ? status == ANKI_CARD_STATUS_REVIEW &&
-                      cards[c].due_timestamp <= deadline
-                    : (status == ANKI_CARD_STATUS_LEARNING ||
-                       status == ANKI_CARD_STATUS_RELEARNING) &&
-                      cards[c].due_timestamp <= now;
-            if (eligible) insert_queue_card(model, &cards[c], capacity);
+            unsigned bucket;
+            if ((status == ANKI_CARD_STATUS_LEARNING ||
+                 status == ANKI_CARD_STATUS_RELEARNING) &&
+                cards[c].due_timestamp <= now) bucket = 0;
+            else if (review_remaining && status == ANKI_CARD_STATUS_REVIEW &&
+                     cards[c].due_timestamp <= deadline) bucket = 1;
+            else if (new_remaining && status == ANKI_CARD_STATUS_NEW) bucket = 2;
+            else continue;
+            insert_queue_card(buckets + bucket * capacity, &counts[bucket],
+                              &cards[c], capacity);
         }
         free(cards);
     }
+    for (unsigned bucket = 0; bucket < 3; bucket++) {
+        uint16_t room = capacity - model->queue_count;
+        if (bucket == 1 && room > review_remaining) room = review_remaining;
+        if (bucket == 2 && room > new_remaining) room = new_remaining;
+        uint16_t take = counts[bucket] < room ? counts[bucket] : room;
+        memcpy(model->today_queue + model->queue_count,
+               buckets + bucket * capacity, take * sizeof(*buckets));
+        model->queue_count += take;
+    }
+    free(buckets);
+    return true;
 }
 
 static void anki_model_rebuild_today_queue(AnkiModel *model) {
     model->queue_count = 0;
     model->active_card_idx = 0; // 游标归零
     model->study_stop_reason = ANKI_STUDY_STOP_COMPLETE;
+    if (model->storage_fault) {
+        model->study_stop_reason = ANKI_STUDY_STOP_STORAGE;
+        return;
+    }
     
     if (model->active_deck_idx < 0 || model->active_deck_idx >= model->deck_count) return;
     
@@ -240,19 +257,14 @@ static void anki_model_rebuild_today_queue(AnkiModel *model) {
         ? (uint16_t)(settings->new_cards_daily - new_done) : 0;
     uint32_t root_id = model->decks[model->active_deck_idx].deck_id;
 
-    collect_queue_pass(model, root_id, now, 0, ANKI_INITIAL_QUEUE_CAPACITY,
-                       false);
-    uint16_t review_room = ANKI_INITIAL_QUEUE_CAPACITY - model->queue_count;
-    uint16_t add_reviews = review_remaining < review_room
-        ? review_remaining : review_room;
-    collect_queue_pass(model, root_id, now, 1,
-                       model->queue_count + add_reviews,
-                       settings->allow_study_ahead);
-
-    uint16_t room = ANKI_INITIAL_QUEUE_CAPACITY - model->queue_count;
-    uint16_t add_new = new_remaining < room ? new_remaining : room;
-    collect_queue_pass(model, root_id, now, 2,
-                       model->queue_count + add_new, false);
+    bool loaded = collect_queue(model, root_id, now, review_remaining,
+                                new_remaining, settings->allow_study_ahead);
+    if (!loaded) {
+        model->queue_count = 0;
+        if (model->study_stop_reason == ANKI_STUDY_STOP_STORAGE)
+            model->storage_fault = true;
+        return;
+    }
     if (model->queue_count > 0) {
         model->study_stop_reason = ANKI_STUDY_STOP_COMPLETE;
     }
@@ -292,12 +304,13 @@ void anki_model_get_daily_counts(AnkiModel *model, int root_deck_idx,
         ? UINT16_MAX : (uint16_t)review_total;
 }
 
-void anki_model_record_answer(AnkiModel *model, uint32_t deck_id,
+bool anki_model_record_answer(AnkiModel *model, uint32_t deck_id,
                               bool was_new, bool was_review)
 {
-    if (!model || (!was_new && !was_review)) return;
+    if (!model) return false;
+    if (!was_new && !was_review) return true;
     uint32_t day = current_day_key();
-    if (day == 0) return;
+    if (day == 0) return false;
     AnkiDailyProgress *target = NULL;
     for (uint8_t i = 0; i < model->daily_progress_count; i++) {
         if (model->daily_progress[i].deck_id == deck_id &&
@@ -317,7 +330,7 @@ void anki_model_record_answer(AnkiModel *model, uint32_t deck_id,
     if (!target && model->daily_progress_count < ANKI_MAX_DECK_CAPACITY) {
         target = &model->daily_progress[model->daily_progress_count++];
     }
-    if (!target) return;
+    if (!target) return false;
     if (target->deck_id != deck_id || target->day_key != day) {
         memset(target, 0, sizeof(*target));
         target->deck_id = deck_id;
@@ -325,7 +338,10 @@ void anki_model_record_answer(AnkiModel *model, uint32_t deck_id,
     }
     if (was_new && target->new_cards < UINT16_MAX) target->new_cards++;
     if (was_review && target->review_cards < UINT16_MAX) target->review_cards++;
-    anki_storage_sync_daily_progress(model);
+    if (!anki_storage_sync_daily_progress(model)) {
+        return false;
+    }
+    return true;
 }
 
 // 在 anki_model_load_next_card 的上方，实现这个函数：
@@ -508,39 +524,7 @@ int anki_model_get_tree_unlearned_cards(AnkiModel *model, int deck_idx) {
 
 bool anki_model_update_card(AnkiModel *model, CardIndex *card) {
     if (!model || !card) return false;
-    char key_buf[32];
-    snprintf(key_buf, sizeof(key_buf), "anki_cards_%u", (unsigned int)card->deck_id);
-
-    struct fdb_blob blob;
-    fdb_kv_get_blob(&g_kvdb, key_buf, fdb_blob_make(&blob, NULL, 0));
-    size_t blob_len = blob.saved.len;
-            if (blob_len > 0 && blob_len % sizeof(CardIndex) == 0 && blob_len <= sizeof(CardIndex) * ANKI_MAX_CARDS_PER_DECK) {
-        int own_total = blob_len / sizeof(CardIndex);
-        CardIndex *cards = malloc(blob_len);
-        if (cards) {
-            if (fdb_kv_get_blob(&g_kvdb, key_buf,
-                                fdb_blob_make(&blob, cards, blob_len)) != blob_len) {
-                free(cards);
-                return false;
-            }
-            bool found = false;
-            for (int c = 0; c < own_total; c++) {
-                if (cards[c].card_id == card->card_id) {
-                    cards[c] = *card; // override
-                    found = true;
-                    break;
-                }
-            }
-            bool saved = found && fdb_kv_set_blob(
-                &g_kvdb, key_buf,
-                fdb_blob_make(&blob, cards, blob_len)) == FDB_NO_ERR;
-            if (found && !saved) {
-                ESP_LOGE(TAG, "Failed to persist card %u",
-                         (unsigned)card->card_id);
-            }
-            free(cards);
-            return saved;
-        }
-    }
-    return false;
+    bool saved = anki_index_update_card(card);
+    if (!saved) ESP_LOGE(TAG, "Failed to persist card %u", (unsigned)card->card_id);
+    return saved;
 }
