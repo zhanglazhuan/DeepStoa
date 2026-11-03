@@ -262,9 +262,13 @@ static void EPD_Part_Update(void)
 
 void EPD_HW_Init(void)
 {
+    ESP_LOGI(TAG, "EPD init: reset");
     epd_reset();
+    ESP_LOGI(TAG, "EPD init: wait after reset");
     epd_read_busy();
+    ESP_LOGI(TAG, "EPD init: software reset");
     epd_write_cmd(0x12); // SWRESET
+    ESP_LOGI(TAG, "EPD init: wait after software reset");
     epd_read_busy();
 
     epd_write_cmd(0x18);
