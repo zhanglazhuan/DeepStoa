@@ -1,7 +1,7 @@
 # DeepStoa OTA 服务端
 
 给设备提供固件检查 / 下载 / 结果回报的最小服务。端侧实现在 `system/services/ota/`，
-UI 在 `apps/settings/subpages/view_update.c`。
+UI 在 `apps/settings/pages/view_update.c`。
 
 ## 跑起来
 

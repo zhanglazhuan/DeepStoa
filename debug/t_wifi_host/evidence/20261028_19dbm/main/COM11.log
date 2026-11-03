@@ -1,0 +1,474 @@
+ESP-ROM:esp32s3-20210327
+Build:Mar 27 2021
+rst:0x15 (USB_UART_CHIP_RESET),boot:0x9 (SPI_FAST_FLASH_BOOT)
+Saved PC:0x40379daa
+SPIWP:0xee
+mode:DIO, clock div:4
+load:0x3fce2820,len:0x14f0
+load:0x403c8700,len:0xd24
+load:0x403cb700,len:0x2ef0
+entry 0x403c8924
+I (38) boot: ESP-IDF v5.5.3-dirty 2nd stage bootloader
+I (38) boot: compile time Oct 28 2026 13:19:16
+I (39) boot: Multicore bootloader
+I (39) boot: chip revision: v0.2
+I (42) boot: efuse block revision: v1.4
+I (46) boot.esp32s3: Boot SPI Speed : 20MHz
+I (50) boot.esp32s3: SPI Mode       : DIO
+I (53) boot.esp32s3: SPI Flash Size : 16MB
+I (57) boot: Enabling RNG early entropy source...
+I (62) boot: Partition Table:
+I (64) boot: ## Label            Usage          Type ST Offset   Length
+I (71) boot:  0 nvs              WiFi data        01 02 00009000 00006000
+I (77) boot:  1 otadata          OTA data         01 00 0000f000 00002000
+I (84) boot:  2 phy_init         RF data          01 01 00011000 00001000
+I (90) boot:  3 ota_0            OTA app          00 10 00020000 00300000
+I (97) boot:  4 ota_1            OTA app          00 11 00320000 00300000
+I (103) boot:  5 fdb_sys          Unknown data     01 81 00620000 00008000
+I (110) boot:  6 fdb_user         Unknown data     01 81 00628000 00400000
+I (116) boot:  7 storage          Unknown data     01 81 00a28000 00200000
+I (123) boot: End of partition table
+I (126) esp_image: segment 0: paddr=00020020 vaddr=3c090020 size=1958ch (103820) map
+I (174) esp_image: segment 1: paddr=000395b4 vaddr=3fc9a100 size=04dc8h ( 19912) load
+I (182) esp_image: segment 2: paddr=0003e384 vaddr=40374000 size=01c94h (  7316) load
+I (186) esp_image: segment 3: paddr=00040020 vaddr=42000020 size=820f4h (532724) map
+I (392) esp_image: segment 4: paddr=000c211c vaddr=40375c94 size=14408h ( 82952) load
+I (427) esp_image: segment 5: paddr=000d652c vaddr=50000000 size=00020h (    32) load
+I (437) boot: Loaded app from partition at offset 0x20000
+I (437) boot: Disabling RNG early entropy source...
+I (448) cpu_start: Multicore app
+I (457) cpu_start: GPIO 44 and 43 are used as console UART I/O pins
+I (459) cpu_start: Pro cpu start user code
+I (459) cpu_start: cpu freq: 160000000 Hz
+I (459) app_init: Application information:
+I (463) app_init: Project name:     tx_diagnostic
+I (467) app_init: App version:      2bad529-dirty
+I (472) app_init: Compile time:     Oct 28 2026 13:18:55
+I (477) app_init: ELF file SHA256:  7d274097e...
+I (481) app_init: ESP-IDF:          v5.5.3-dirty
+I (485) efuse_init: Min chip rev:     v0.0
+I (489) efuse_init: Max chip rev:     v0.99 
+I (493) efuse_init: Chip rev:         v0.2
+I (497) heap_init: Initializing. RAM available for dynamic allocation:
+I (504) heap_init: At 3FCA2BB0 len 00046B60 (282 KiB): RAM
+I (508) heap_init: At 3FCE9710 len 00005724 (21 KiB): RAM
+I (513) heap_init: At 3FCF0000 len 00008000 (32 KiB): DRAM
+I (519) heap_init: At 600FE000 len 00001FE8 (7 KiB): RTCRAM
+I (527) spi_flash: detected chip: gd
+I (527) spi_flash: flash io: dio
+I (531) sleep_gpio: Configure to isolate all GPIO pins in sleep state
+I (537) sleep_gpio: Enable automatic switching of GPIO sleep configuration
+I (544) main_task: Started on CPU0
+I (554) main_task: Calling app_main()
+I (574) pp: pp rom version: e7ae62f
+I (574) net80211: net80211 rom version: e7ae62f
+I (584) wifi:wifi driver task: 3fced568, prio:23, stack:6656, core=0
+I (584) wifi:wifi firmware version: 4df78f2
+I (594) wifi:wifi certification version: v7.0
+I (594) wifi:config NVS flash: enabled
+I (594) wifi:config nano formatting: disabled
+I (594) wifi:Init data frame dynamic rx buffer num: 32
+I (594) wifi:Init static rx mgmt buffer num: 5
+I (604) wifi:Init management short buffer num: 32
+I (604) wifi:Init dynamic tx buffer num: 32
+I (614) wifi:Init static tx FG buffer num: 2
+I (614) wifi:Init static rx buffer size: 1600
+I (624) wifi:Init static rx buffer num: 10
+I (624) wifi:Init dynamic rx buffer num: 32
+I (634) wifi_init: rx ba win: 6
+I (634) wifi_init: accept mbox: 6
+I (634) wifi_init: tcpip mbox: 32
+I (634) wifi_init: udp mbox: 6
+I (634) wifi_init: tcp mbox: 6
+I (644) wifi_init: tcp tx win: 5760
+I (644) wifi_init: tcp rx win: 5760
+I (644) wifi_init: tcp mss: 1440
+I (654) wifi_init: WiFi IRAM OP enabled
+I (654) wifi_init: WiFi RX IRAM OP enabled
+I (664) phy_init: phy_version 711,97bcf0a2,Aug 25 2025,19:04:10
+I (714) wifi:mode : sta (38:44:be:c9:d7:d0)
+I (714) wifi:enable tsf
+W (724) t_wifi: TX_DIAG full_calibration=1 requested_qdbm=76 actual_qdbm=76
+I (724) t_wifi: network test started: my_test_wifi
+I (724) t_wifi: scanning for my_test_wifi
+I (4434) t_wifi: scan: ssid=CU_u5Uq auth=3 channel=6 rssi=-27 bssid=78:dd:33:ee:66:68
+I (4434) t_wifi: scan: ssid=STB_u5Uq auth=3 channel=6 rssi=-27 bssid=78:dd:33:ee:66:6a
+I (4434) t_wifi: scan: ssid=CMCC-ayrw auth=4 channel=1 rssi=-30 bssid=ec:cf:70:6d:32:56
+I (4444) t_wifi: scan: ssid=Ruijie-PRO auth=4 channel=6 rssi=-31 bssid=10:82:3d:8c:ac:05
+I (4454) t_wifi: scan: ssid= auth=4 channel=6 rssi=-31 bssid=12:82:3d:5c:ac:05
+I (4464) t_wifi: scan: ssid=my_test_wifi auth=3 channel=1 rssi=-33 bssid=42:d1:33:36:96:51
+I (4464) t_wifi: target scan: auth=3 channel=1 rssi=-33 bssid=42:d1:33:36:96:51
+I (4474) t_wifi: scan: ssid=CU_2RZz auth=4 channel=9 rssi=-51 bssid=20:20:51:e2:cb:e4
+I (4484) t_wifi: scan: ssid=WP-WP666 auth=4 channel=1 rssi=-52 bssid=cc:08:fb:d3:22:34
+I (4494) t_wifi: scan: ssid= auth=4 channel=11 rssi=-57 bssid=a2:97:cc:f8:6c:cb
+I (4494) t_wifi: scan: ssid=bai auth=4 channel=11 rssi=-58 bssid=98:97:cc:f8:6c:cb
+I (4504) t_wifi: scan: ssid=CU_h94E auth=3 channel=11 rssi=-61 bssid=66:5e:10:fa:24:64
+I (4514) t_wifi: scan: ssid=huazi auth=3 channel=11 rssi=-64 bssid=3c:93:f4:ee:a5:ac
+I (4524) t_wifi: scan: ssid=cdlkk auth=4 channel=1 rssi=-66 bssid=ec:41:18:e6:39:ea
+I (4524) t_wifi: scan: ssid=Xiaomi_CC70 auth=3 channel=10 rssi=-67 bssid=5c:02:14:f7:15:6a
+I (4534) t_wifi: scan: ssid=CU_36E3 auth=4 channel=3 rssi=-70 bssid=64:db:38:4f:6b:48
+I (4544) t_wifi: scan: ssid=CMCC-1-301 auth=4 channel=11 rssi=-70 bssid=96:d2:bc:4f:d7:6c
+I (4554) t_wifi: scan: ssid=601 auth=3 channel=6 rssi=-71 bssid=7e:00:4d:03:96:84
+I (4554) t_wifi: scan: ssid=26-201 auth=3 channel=6 rssi=-74 bssid=d8:68:52:ad:a4:4c
+I (4564) t_wifi: scan: ssid=CMCC-1-301_plus auth=4 channel=11 rssi=-80 bssid=3c:cd:57:1c:17:19
+I (4574) t_wifi: scan: ssid=26-201 auth=3 channel=1 rssi=-81 bssid=60:53:75:8d:ed:40
+I (4584) t_wifi: scan: ssid=CU_Zk9C auth=4 channel=9 rssi=-81 bssid=1c:67:4a:11:20:c5
+I (4584) t_wifi: scan: ssid= auth=0 channel=10 rssi=-81 bssid=8e:c3:97:c4:f4:a6
+I (4594) t_wifi: scan: ssid=602 auth=3 channel=11 rssi=-81 bssid=a2:35:ba:d5:b9:57
+I (4604) t_wifi: scan: ssid=GAO auth=4 channel=1 rssi=-82 bssid=90:7e:43:ff:84:7c
+I (4614) t_wifi: scan: ssid=ChinaNet-syYbKS auth=4 channel=8 rssi=-82 bssid=68:77:da:1b:c4:0c
+I (4614) t_wifi: scan: ssid= auth=3 channel=1 rssi=-83 bssid=92:7e:43:9f:84:7c
+I (4624) t_wifi: scan: ssid=CMCC-AcxC auth=4 channel=3 rssi=-83 bssid=f0:7a:55:fa:f9:a3
+I (4634) t_wifi: scan: ssid=jiananwang auth=3 channel=6 rssi=-83 bssid=cc:bc:e3:19:f1:5c
+I (4644) t_wifi: scan: ssid= auth=4 channel=8 rssi=-84 bssid=6a:77:da:3b:c4:0c
+I (4644) t_wifi: scan: ssid=602 auth=3 channel=11 rssi=-84 bssid=c0:8b:05:5c:4a:48
+I (4654) t_wifi: scan: ssid=jiananwang auth=3 channel=1 rssi=-85 bssid=e0:ae:a2:fc:ef:38
+I (4664) t_wifi: scan: ssid=huazi auth=3 channel=6 rssi=-86 bssid=d8:68:52:af:2b:3c
+I (4674) t_wifi: scan: ssid=TP-LINK_740611_5G auth=4 channel=6 rssi=-86 bssid=dc:fe:18:2c:5a:3d
+I (4674) t_wifi: scan: ssid=402 auth=3 channel=6 rssi=-86 bssid=4e:d0:dd:95:92:9c
+I (4684) t_wifi: scan: ssid=502 auth=3 channel=6 rssi=-87 bssid=48:e5:33:58:c5:3e
+I (4694) t_wifi: scan: ssid=Hu001 auth=3 channel=1 rssi=-88 bssid=88:69:3d:bc:d8:b0
+I (4704) t_wifi: scan: ssid=STB_qU7a auth=3 channel=1 rssi=-88 bssid=88:69:3d:bc:d8:b2
+I (4704) t_wifi: scan: ssid=Fan auth=3 channel=11 rssi=-88 bssid=e4:dc:cc:cb:7e:38
+I (4714) t_wifi: scan: ssid=301 auth=4 channel=3 rssi=-90 bssid=f2:74:8d:8b:69:d9
+I (4724) t_wifi: scan: ssid= auth=0 channel=6 rssi=-90 bssid=0a:67:61:bd:28:4e
+I (4724) t_wifi: scan: ssid=CMCC-kAmf auth=4 channel=9 rssi=-90 bssid=ac:88:66:a0:f9:73
+I (4734) t_wifi: scan: ssid=大能有点能-2.4G auth=7 channel=9 rssi=-91 bssid=dc:8e:8d:cd:9d:48
+I (4744) t_wifi: scan: ssid=3012.4G auth=4 channel=3 rssi=-92 bssid=f2:74:8d:9b:69:d9
+I (4754) t_wifi: scan: ssid=JA-F10C-L858C auth=0 channel=1 rssi=-94 bssid=e0:cb:56:15:85:8d
+I (4764) t_wifi: scan: ssid=Hu001 auth=3 channel=1 rssi=-94 bssid=bc:1e:85:b9:50:b4
+I (4764) t_wifi: scan: ssid=LQ auth=3 channel=1 rssi=-95 bssid=ec:7c:2c:f1:95:84
+I (4774) t_wifi: scan: ssid=midea_e3_0019 auth=0 channel=1 rssi=-96 bssid=ac:72:dd:1c:ab:3d
+I (4784) t_wifi: DeepStoa config: connecting to my_test_wifi channel=1 bssid=42:d1:33:36:96:51 (password length=12)
+I (4904) wifi:new:<1,0>, old:<1,0>, ap:<255,255>, sta:<1,0>, prof:1, snd_ch_cfg:0x0
+I (4904) wifi:state: init -> auth (0xb0)
+I (5904) wifi:state: auth -> init (0x200)
+I (5914) wifi:new:<1,0>, old:<1,0>, ap:<255,255>, sta:<1,0>, prof:1, snd_ch_cfg:0x0
+W (5914) t_wifi: disconnected: reason=2 rssi=-33 bssid=42:d1:33:36:96:51
+E (5914) t_wifi: my_test_wifi / DeepStoa config: FAIL (disconnected)
+I (6424) t_wifi: ESP-IDF defaults: connecting to my_test_wifi channel=1 bssid=42:d1:33:36:96:51 (password length=12)
+W (6424) wifi:Password length matches WPA2 standards, authmode threshold changes from OPEN to WPA2
+I (6454) wifi:new:<1,0>, old:<1,0>, ap:<255,255>, sta:<1,0>, prof:1, snd_ch_cfg:0x0
+I (6454) wifi:state: init -> auth (0xb0)
+I (7464) wifi:state: auth -> init (0x200)
+I (7464) wifi:new:<1,0>, old:<1,0>, ap:<255,255>, sta:<1,0>, prof:1, snd_ch_cfg:0x0
+W (7464) t_wifi: disconnected: reason=2 rssi=-32 bssid=42:d1:33:36:96:51
+E (7464) t_wifi: my_test_wifi / ESP-IDF defaults: FAIL (disconnected)
+I (7974) t_wifi: network test finished: my_test_wifi
+W (7974) t_wifi: TX_DIAG full_calibration=1 requested_qdbm=8 actual_qdbm=8
+I (7974) t_wifi: network test started: my_test_wifi
+I (7974) t_wifi: scanning for my_test_wifi
+I (11684) t_wifi: scan: ssid=CU_u5Uq auth=3 channel=6 rssi=-25 bssid=78:dd:33:ee:66:68
+I (11684) t_wifi: scan: ssid=STB_u5Uq auth=3 channel=6 rssi=-28 bssid=78:dd:33:ee:66:6a
+I (11684) t_wifi: scan: ssid=CMCC-ayrw auth=4 channel=1 rssi=-31 bssid=ec:cf:70:6d:32:56
+I (11694) t_wifi: scan: ssid=Ruijie-PRO auth=4 channel=6 rssi=-31 bssid=10:82:3d:8c:ac:05
+I (11704) t_wifi: scan: ssid= auth=4 channel=6 rssi=-31 bssid=12:82:3d:5c:ac:05
+I (11714) t_wifi: scan: ssid=my_test_wifi auth=3 channel=1 rssi=-32 bssid=42:d1:33:36:96:51
+I (11714) t_wifi: target scan: auth=3 channel=1 rssi=-32 bssid=42:d1:33:36:96:51
+I (11724) t_wifi: scan: ssid=WP-WP666 auth=4 channel=1 rssi=-52 bssid=cc:08:fb:d3:22:34
+I (11734) t_wifi: scan: ssid=CU_2RZz auth=4 channel=9 rssi=-55 bssid=20:20:51:e2:cb:e4
+I (11744) t_wifi: scan: ssid=bai auth=4 channel=11 rssi=-57 bssid=98:97:cc:f8:6c:cb
+I (11744) t_wifi: scan: ssid= auth=4 channel=11 rssi=-59 bssid=a2:97:cc:f8:6c:cb
+I (11754) t_wifi: scan: ssid=cdlkk auth=4 channel=1 rssi=-63 bssid=ec:41:18:e6:39:ea
+I (11764) t_wifi: scan: ssid=huazi auth=3 channel=11 rssi=-65 bssid=3c:93:f4:ee:a5:ac
+I (11774) t_wifi: scan: ssid= auth=0 channel=10 rssi=-66 bssid=62:02:14:f7:15:6a
+I (11774) t_wifi: scan: ssid=Xiaomi_CC70 auth=3 channel=10 rssi=-69 bssid=5c:02:14:f7:15:6a
+I (11784) t_wifi: scan: ssid=CU_h94E auth=3 channel=11 rssi=-69 bssid=66:5e:10:fa:24:64
+I (11794) t_wifi: scan: ssid=CMCC-1-301 auth=4 channel=11 rssi=-70 bssid=96:d2:bc:4f:d7:6c
+I (11804) t_wifi: scan: ssid=CU_36E3 auth=4 channel=3 rssi=-71 bssid=64:db:38:4f:6b:48
+I (11804) t_wifi: scan: ssid=26-201 auth=3 channel=6 rssi=-73 bssid=d8:68:52:ad:a4:4c
+I (11814) t_wifi: scan: ssid=601 auth=3 channel=6 rssi=-74 bssid=7e:00:4d:03:96:84
+I (11824) t_wifi: scan: ssid=CU_Zk9C auth=4 channel=9 rssi=-75 bssid=1c:67:4a:11:20:c5
+I (11834) t_wifi: scan: ssid=CMCC-1-301_plus auth=4 channel=11 rssi=-79 bssid=3c:cd:57:1c:17:19
+I (11844) t_wifi: scan: ssid=602 auth=3 channel=11 rssi=-79 bssid=a2:35:ba:d5:b9:57
+I (11844) t_wifi: scan: ssid=CMCC-AcxC auth=4 channel=3 rssi=-81 bssid=f0:7a:55:fa:f9:a3
+I (11854) t_wifi: scan: ssid= auth=0 channel=10 rssi=-82 bssid=8e:c3:97:c4:f4:a6
+I (11864) t_wifi: scan: ssid= auth=3 channel=1 rssi=-83 bssid=92:7e:43:9f:84:7c
+I (11864) t_wifi: scan: ssid=jiananwang auth=3 channel=1 rssi=-84 bssid=e0:ae:a2:fc:ef:38
+I (11874) t_wifi: scan: ssid=GAO auth=4 channel=1 rssi=-84 bssid=90:7e:43:ff:84:7c
+I (11884) t_wifi: scan: ssid=26-201 auth=3 channel=1 rssi=-84 bssid=60:53:75:8d:ed:40
+I (11894) t_wifi: scan: ssid=huazi auth=3 channel=6 rssi=-84 bssid=d8:68:52:af:2b:3c
+I (11894) t_wifi: scan: ssid= auth=4 channel=8 rssi=-84 bssid=6a:77:da:3b:c4:0c
+I (11904) t_wifi: scan: ssid=Hu001 auth=3 channel=1 rssi=-88 bssid=88:69:3d:bc:d8:b0
+I (11914) t_wifi: scan: ssid=CMCC-cxXn auth=4 channel=11 rssi=-89 bssid=6e:6c:0f:13:50:88
+I (11924) t_wifi: scan: ssid=STB_qU7a auth=3 channel=1 rssi=-90 bssid=88:69:3d:bc:d8:b2
+I (11934) t_wifi: scan: ssid=601 auth=3 channel=3 rssi=-90 bssid=7e:00:4d:6f:63:a0
+I (11934) t_wifi: scan: ssid=大能有点能-2.4G auth=7 channel=9 rssi=-90 bssid=dc:8e:8d:cd:9d:48
+I (11944) t_wifi: scan: ssid= auth=4 channel=11 rssi=-90 bssid=9c:9d:7e:74:0c:3f
+I (11954) t_wifi: scan: ssid= auth=0 channel=3 rssi=-92 bssid=6a:64:4a:83:2c:4e
+I (11964) t_wifi: scan: ssid=3012.4G auth=4 channel=3 rssi=-92 bssid=f2:74:8d:9b:69:d9
+I (11964) t_wifi: scan: ssid=LQ auth=3 channel=1 rssi=-94 bssid=ec:7c:2c:f1:95:84
+I (11974) t_wifi: scan: ssid=midea_e3_0019 auth=0 channel=1 rssi=-94 bssid=ac:72:dd:1c:ab:3d
+I (11984) t_wifi: scan: ssid= auth=4 channel=3 rssi=-94 bssid=f2:74:8d:db:69:d9
+I (11994) t_wifi: scan: ssid=fatyu0814 auth=3 channel=11 rssi=-95 bssid=4a:70:6f:0c:ab:08
+I (11994) t_wifi: scan: ssid=midea_ca_0790 auth=3 channel=11 rssi=-95 bssid=38:21:87:1f:5e:db
+I (12004) t_wifi: DeepStoa config: connecting to my_test_wifi channel=1 bssid=42:d1:33:36:96:51 (password length=12)
+I (12044) wifi:new:<1,0>, old:<1,0>, ap:<255,255>, sta:<1,0>, prof:1, snd_ch_cfg:0x0
+I (12044) wifi:state: init -> auth (0xb0)
+I (12054) wifi:state: auth -> assoc (0x0)
+I (12054) wifi:state: assoc -> run (0x10)
+I (12154) wifi:connected with my_test_wifi, aid = 5, channel 1, BW20, bssid = 42:d1:33:36:96:51
+I (12154) wifi:security: WPA2-PSK, phy: bgn, rssi: -31
+I (12154) wifi:pm start, type: 1
+
+I (12154) wifi:dp: 1, bi: 102400, li: 3, scale listen interval from 307200 us to 307200 us
+I (12164) wifi:set rx beacon pti, rx_bcn_pti: 0, bcn_timeout: 25000, mt_pti: 0, mt_time: 10000
+I (12184) t_wifi: associated; waiting for IP
+I (12184) wifi:AP's beacon interval = 102400 us, DTIM period = 3
+I (13234) esp_netif_handlers: sta ip: 192.168.137.172, mask: 255.255.255.0, gw: 192.168.137.1
+I (13234) t_wifi: got IP: 192.168.137.172
+I (13234) t_wifi: my_test_wifi / DeepStoa config: PASS
+I (13234) t_wifi: TX_DIAG IP PASS; Internet check skipped
+I (13244) wifi:state: run -> init (0x0)
+I (13244) wifi:pm stop, total sleep time: 741968 us / 1089503 us
+
+I (13254) wifi:new:<1,0>, old:<1,0>, ap:<255,255>, sta:<1,0>, prof:1, snd_ch_cfg:0x0
+W (13264) t_wifi: disconnected: reason=8 rssi=-31 bssid=42:d1:33:36:96:51
+I (13764) t_wifi: ESP-IDF defaults: connecting to my_test_wifi channel=1 bssid=42:d1:33:36:96:51 (password length=12)
+W (13764) wifi:Password length matches WPA2 standards, authmode threshold changes from OPEN to WPA2
+I (13784) wifi:new:<1,0>, old:<1,0>, ap:<255,255>, sta:<1,0>, prof:1, snd_ch_cfg:0x0
+I (13784) wifi:state: init -> auth (0xb0)
+I (13784) wifi:state: auth -> assoc (0x0)
+I (13794) wifi:state: assoc -> run (0x10)
+I (13844) wifi:connected with my_test_wifi, aid = 6, channel 1, BW20, bssid = 42:d1:33:36:96:51
+I (13844) wifi:security: WPA2-PSK, phy: bgn, rssi: -32
+I (13854) wifi:pm start, type: 1
+
+I (13854) wifi:set rx beacon pti, rx_bcn_pti: 0, bcn_timeout: 25000, mt_pti: 0, mt_time: 10000
+I (13864) t_wifi: associated; waiting for IP
+I (13924) wifi:AP's beacon interval = 102400 us, DTIM period = 3
+I (16714) esp_netif_handlers: sta ip: 192.168.137.172, mask: 255.255.255.0, gw: 192.168.137.1
+I (16714) t_wifi: got IP: 192.168.137.172
+I (16714) t_wifi: my_test_wifi / ESP-IDF defaults: PASS
+I (16714) t_wifi: TX_DIAG IP PASS; Internet check skipped
+I (16724) wifi:state: run -> init (0x0)
+I (16724) wifi:pm stop, total sleep time: 1684490 us / 2875573 us
+
+I (16734) wifi:new:<1,0>, old:<1,0>, ap:<255,255>, sta:<1,0>, prof:1, snd_ch_cfg:0x0
+W (16744) t_wifi: disconnected: reason=8 rssi=-31 bssid=42:d1:33:36:96:51
+I (17244) t_wifi: network test finished: my_test_wifi
+W (17244) t_wifi: TX_DIAG full_calibration=1 requested_qdbm=76 actual_qdbm=76
+I (17244) t_wifi: network test started: my_test_wifi
+I (17244) t_wifi: scanning for my_test_wifi
+I (20954) t_wifi: scan: ssid=CU_u5Uq auth=3 channel=6 rssi=-28 bssid=78:dd:33:ee:66:68
+I (20954) t_wifi: scan: ssid=my_test_wifi auth=3 channel=1 rssi=-30 bssid=42:d1:33:36:96:51
+I (20954) t_wifi: target scan: auth=3 channel=1 rssi=-30 bssid=42:d1:33:36:96:51
+I (20964) t_wifi: scan: ssid=STB_u5Uq auth=3 channel=6 rssi=-31 bssid=78:dd:33:ee:66:6a
+I (20974) t_wifi: scan: ssid=Ruijie-PRO auth=4 channel=6 rssi=-31 bssid=10:82:3d:8c:ac:05
+I (20984) t_wifi: scan: ssid=CMCC-ayrw auth=4 channel=1 rssi=-32 bssid=ec:cf:70:6d:32:56
+I (20984) t_wifi: scan: ssid= auth=4 channel=6 rssi=-36 bssid=12:82:3d:5c:ac:05
+I (20994) t_wifi: scan: ssid=WP-WP666 auth=4 channel=1 rssi=-52 bssid=cc:08:fb:d3:22:34
+I (21004) t_wifi: scan: ssid=CU_2RZz auth=4 channel=9 rssi=-53 bssid=20:20:51:e2:cb:e4
+I (21014) t_wifi: scan: ssid=bai auth=4 channel=11 rssi=-58 bssid=98:97:cc:f8:6c:cb
+I (21014) t_wifi: scan: ssid= auth=4 channel=11 rssi=-60 bssid=a2:97:cc:f8:6c:cb
+I (21024) t_wifi: scan: ssid=cdlkk auth=4 channel=1 rssi=-63 bssid=ec:41:18:e6:39:ea
+I (21034) t_wifi: scan: ssid=huazi auth=3 channel=11 rssi=-65 bssid=3c:93:f4:ee:a5:ac
+I (21044) t_wifi: scan: ssid= auth=0 channel=10 rssi=-66 bssid=62:02:14:f7:15:6a
+I (21044) t_wifi: scan: ssid=CU_h94E auth=3 channel=11 rssi=-66 bssid=66:5e:10:fa:24:64
+I (21054) t_wifi: scan: ssid=Xiaomi_CC70 auth=3 channel=10 rssi=-68 bssid=5c:02:14:f7:15:6a
+I (21064) t_wifi: scan: ssid=CU_36E3 auth=4 channel=3 rssi=-69 bssid=64:db:38:4f:6b:48
+I (21074) t_wifi: scan: ssid=CMCC-1-301 auth=4 channel=11 rssi=-71 bssid=96:d2:bc:4f:d7:6c
+I (21074) t_wifi: scan: ssid=601 auth=3 channel=6 rssi=-73 bssid=7e:00:4d:03:96:84
+I (21084) t_wifi: scan: ssid=26-201 auth=3 channel=6 rssi=-74 bssid=d8:68:52:ad:a4:4c
+I (21094) t_wifi: scan: ssid= auth=0 channel=10 rssi=-79 bssid=8e:c3:97:c4:f4:a6
+I (21104) t_wifi: scan: ssid=CU_Zk9C auth=4 channel=9 rssi=-80 bssid=1c:67:4a:11:20:c5
+I (21104) t_wifi: scan: ssid=602 auth=3 channel=11 rssi=-80 bssid=a2:35:ba:d5:b9:57
+I (21114) t_wifi: scan: ssid= auth=3 channel=1 rssi=-83 bssid=92:7e:43:9f:84:7c
+I (21124) t_wifi: scan: ssid=CMCC-AcxC auth=4 channel=3 rssi=-83 bssid=f0:7a:55:fa:f9:a3
+I (21134) t_wifi: scan: ssid=602 auth=3 channel=11 rssi=-83 bssid=c0:8b:05:5c:4a:48
+I (21134) t_wifi: scan: ssid=CMCC-1-301_plus auth=4 channel=11 rssi=-84 bssid=3c:cd:57:1c:17:19
+I (21144) t_wifi: scan: ssid=jiananwang auth=3 channel=6 rssi=-85 bssid=cc:bc:e3:19:f1:5c
+I (21154) t_wifi: scan: ssid=Hu001 auth=3 channel=1 rssi=-86 bssid=88:69:3d:bc:d8:b0
+I (21164) t_wifi: scan: ssid=TP-LINK_740611_5G auth=4 channel=6 rssi=-86 bssid=dc:fe:18:2c:5a:3d
+I (21174) t_wifi: scan: ssid=huazi auth=3 channel=6 rssi=-86 bssid=d8:68:52:af:2b:3c
+I (21174) t_wifi: scan: ssid=402 auth=3 channel=6 rssi=-87 bssid=4e:d0:dd:95:92:9c
+I (21184) t_wifi: scan: ssid=STB_qU7a auth=3 channel=1 rssi=-88 bssid=88:69:3d:bc:d8:b2
+I (21194) t_wifi: scan: ssid=CMCC-MAGM auth=4 channel=11 rssi=-88 bssid=da:88:63:b3:54:d0
+I (21204) t_wifi: scan: ssid= auth=4 channel=3 rssi=-89 bssid=f2:74:8d:db:69:d9
+I (21204) t_wifi: scan: ssid=Fan auth=3 channel=11 rssi=-89 bssid=e4:dc:cc:cb:7e:38
+I (21214) t_wifi: scan: ssid=CMCC-62cb auth=4 channel=4 rssi=-90 bssid=24:e8:e5:85:0f:c2
+I (21224) t_wifi: scan: ssid= auth=3 channel=11 rssi=-90 bssid=44:c7:fc:80:50:1d
+I (21234) t_wifi: scan: ssid=CMCC-kAmf auth=4 channel=9 rssi=-92 bssid=ac:88:66:a0:f9:73
+I (21234) t_wifi: scan: ssid= auth=3 channel=10 rssi=-92 bssid=ea:3a:4b:b0:13:22
+I (21244) t_wifi: scan: ssid=HUAWEI-凌霄-CW12U2 auth=3 channel=6 rssi=-93 bssid=62:79:04:94:83:0d
+I (21254) t_wifi: scan: ssid=midea_e3_0019 auth=0 channel=1 rssi=-96 bssid=ac:72:dd:1c:ab:3d
+I (21264) t_wifi: scan: ssid=JA-F10C-L858C auth=0 channel=1 rssi=-96 bssid=e0:cb:56:15:85:8d
+I (21274) t_wifi: DeepStoa config: connecting to my_test_wifi channel=1 bssid=42:d1:33:36:96:51 (password length=12)
+I (21304) wifi:new:<1,0>, old:<1,0>, ap:<255,255>, sta:<1,0>, prof:1, snd_ch_cfg:0x0
+I (21304) wifi:state: init -> auth (0xb0)
+I (22304) wifi:state: auth -> init (0x200)
+I (22314) wifi:new:<1,0>, old:<1,0>, ap:<255,255>, sta:<1,0>, prof:1, snd_ch_cfg:0x0
+W (22314) t_wifi: disconnected: reason=2 rssi=-32 bssid=42:d1:33:36:96:51
+E (22314) t_wifi: my_test_wifi / DeepStoa config: FAIL (disconnected)
+I (22824) t_wifi: ESP-IDF defaults: connecting to my_test_wifi channel=1 bssid=42:d1:33:36:96:51 (password length=12)
+W (22824) wifi:Password length matches WPA2 standards, authmode threshold changes from OPEN to WPA2
+I (22844) wifi:new:<1,0>, old:<1,0>, ap:<255,255>, sta:<1,0>, prof:1, snd_ch_cfg:0x0
+I (22844) wifi:state: init -> auth (0xb0)
+I (23844) wifi:state: auth -> init (0x200)
+I (23844) wifi:new:<1,0>, old:<1,0>, ap:<255,255>, sta:<1,0>, prof:1, snd_ch_cfg:0x0
+W (23854) t_wifi: disconnected: reason=2 rssi=-31 bssid=42:d1:33:36:96:51
+E (23854) t_wifi: my_test_wifi / ESP-IDF defaults: FAIL (disconnected)
+I (24364) t_wifi: network test finished: my_test_wifi
+W (24364) t_wifi: TX_DIAG full_calibration=1 requested_qdbm=8 actual_qdbm=8
+I (24364) t_wifi: network test started: my_test_wifi
+I (24364) t_wifi: scanning for my_test_wifi
+I (28474) t_wifi: scan: ssid=CU_u5Uq auth=3 channel=6 rssi=-29 bssid=78:dd:33:ee:66:68
+I (28474) t_wifi: scan: ssid=STB_u5Uq auth=3 channel=6 rssi=-29 bssid=78:dd:33:ee:66:6a
+I (28474) t_wifi: scan: ssid= auth=4 channel=6 rssi=-30 bssid=12:82:3d:5c:ac:05
+I (28484) t_wifi: scan: ssid=Ruijie-PRO auth=4 channel=6 rssi=-31 bssid=10:82:3d:8c:ac:05
+I (28494) t_wifi: scan: ssid=my_test_wifi auth=3 channel=1 rssi=-32 bssid=42:d1:33:36:96:51
+I (28504) t_wifi: target scan: auth=3 channel=1 rssi=-32 bssid=42:d1:33:36:96:51
+I (28504) t_wifi: scan: ssid=CMCC-ayrw auth=4 channel=1 rssi=-33 bssid=ec:cf:70:6d:32:56
+I (28514) t_wifi: scan: ssid=CU_2RZz auth=4 channel=9 rssi=-53 bssid=20:20:51:e2:cb:e4
+I (28524) t_wifi: scan: ssid=WP-WP666 auth=4 channel=1 rssi=-54 bssid=cc:08:fb:d3:22:34
+I (28534) t_wifi: scan: ssid=CU_PfyD auth=4 channel=4 rssi=-54 bssid=e4:66:ab:83:54:85
+I (28534) t_wifi: scan: ssid= auth=4 channel=11 rssi=-57 bssid=a2:97:cc:f8:6c:cb
+I (28544) t_wifi: scan: ssid=bai auth=4 channel=11 rssi=-59 bssid=98:97:cc:f8:6c:cb
+I (28554) t_wifi: scan: ssid=CU_h94E auth=3 channel=11 rssi=-65 bssid=66:5e:10:fa:24:64
+I (28564) t_wifi: scan: ssid=huazi auth=3 channel=11 rssi=-65 bssid=3c:93:f4:ee:a5:ac
+I (28564) t_wifi: scan: ssid=cdlkk auth=4 channel=1 rssi=-67 bssid=ec:41:18:e6:39:ea
+I (28574) t_wifi: scan: ssid= auth=0 channel=10 rssi=-68 bssid=62:02:14:f7:15:6a
+I (28584) t_wifi: scan: ssid=Xiaomi_CC70 auth=3 channel=10 rssi=-70 bssid=5c:02:14:f7:15:6a
+I (28594) t_wifi: scan: ssid=CMCC-1-301 auth=4 channel=11 rssi=-71 bssid=96:d2:bc:4f:d7:6c
+I (28594) t_wifi: scan: ssid=DC2902391610000B07060026 auth=3 channel=1 rssi=-72 bssid=50:13:95:4f:a2:1a
+I (28604) t_wifi: scan: ssid=CU_36E3 auth=4 channel=3 rssi=-72 bssid=64:db:38:4f:6b:48
+I (28614) t_wifi: scan: ssid=601 auth=3 channel=6 rssi=-72 bssid=7e:00:4d:03:96:84
+I (28624) t_wifi: scan: ssid=26-201 auth=3 channel=6 rssi=-75 bssid=d8:68:52:ad:a4:4c
+I (28634) t_wifi: scan: ssid=CU_Zk9C auth=4 channel=9 rssi=-78 bssid=1c:67:4a:11:20:c5
+I (28634) t_wifi: scan: ssid=CMCC-AcxC auth=4 channel=3 rssi=-80 bssid=f0:7a:55:fa:f9:a3
+I (28644) t_wifi: scan: ssid=602 auth=3 channel=11 rssi=-80 bssid=a2:35:ba:d5:b9:57
+I (28654) t_wifi: scan: ssid=GAO auth=4 channel=1 rssi=-81 bssid=90:7e:43:ff:84:7c
+I (28664) t_wifi: scan: ssid=jiananwang auth=3 channel=6 rssi=-81 bssid=cc:bc:e3:19:f1:5c
+I (28664) t_wifi: scan: ssid=ChinaNet-syYbKS auth=4 channel=8 rssi=-81 bssid=68:77:da:1b:c4:0c
+I (28674) t_wifi: scan: ssid=CMCC-1-301_plus auth=4 channel=11 rssi=-81 bssid=3c:cd:57:1c:17:19
+I (28684) t_wifi: scan: ssid= auth=3 channel=1 rssi=-82 bssid=92:7e:43:9f:84:7c
+I (28694) t_wifi: scan: ssid=huazi auth=3 channel=6 rssi=-84 bssid=d8:68:52:af:2b:3c
+I (28704) t_wifi: scan: ssid= auth=4 channel=8 rssi=-84 bssid=6a:77:da:3b:c4:0c
+I (28704) t_wifi: scan: ssid=602 auth=3 channel=11 rssi=-86 bssid=c0:8b:05:5c:4a:48
+I (28714) t_wifi: scan: ssid=3012.4G auth=4 channel=3 rssi=-88 bssid=f2:74:8d:9b:69:d9
+I (28724) t_wifi: scan: ssid=402 auth=3 channel=6 rssi=-88 bssid=4e:d0:dd:95:92:9c
+I (28724) t_wifi: scan: ssid=ZYOC-201 auth=4 channel=11 rssi=-88 bssid=88:25:93:61:45:f2
+I (28734) t_wifi: scan: ssid=TP-LINK_740611_5G auth=4 channel=6 rssi=-89 bssid=dc:fe:18:2c:5a:3d
+I (28744) t_wifi: scan: ssid=CMCC-2jvw auth=4 channel=5 rssi=-90 bssid=ec:e7:c2:00:e5:48
+I (28754) t_wifi: scan: ssid=xiangyu502 auth=4 channel=10 rssi=-90 bssid=30:1f:48:79:23:92
+I (28764) t_wifi: scan: ssid=CMCC-62cb auth=4 channel=4 rssi=-91 bssid=24:e8:e5:85:0f:c2
+I (28764) t_wifi: scan: ssid=CU_kDs9 auth=4 channel=5 rssi=-91 bssid=20:20:51:e2:e5:7c
+I (28774) t_wifi: scan: ssid=ChinaUnicom-zhang auth=4 channel=11 rssi=-92 bssid=44:c7:fc:80:50:18
+I (28784) t_wifi: scan: ssid= auth=3 channel=11 rssi=-92 bssid=44:c7:fc:80:50:1d
+I (28794) t_wifi: scan: ssid=CAR-DVR-5409 auth=3 channel=6 rssi=-93 bssid=00:c6:81:a9:54:09
+I (28804) t_wifi: scan: ssid=fatyu0814 auth=3 channel=11 rssi=-94 bssid=4a:70:6f:0c:ab:08
+I (28804) t_wifi: scan: ssid=CMCC-cxXn auth=4 channel=11 rssi=-95 bssid=6e:6c:0f:13:50:88
+I (28814) t_wifi: scan: ssid= auth=4 channel=1 rssi=-96 bssid=9e:7f:81:a3:1a:1b
+I (28824) t_wifi: scan: ssid=HUAWEI-凌霄-CW12U2 auth=3 channel=6 rssi=-96 bssid=62:79:04:94:83:0d
+I (28834) t_wifi: scan: ssid=midea_ca_0790 auth=3 channel=11 rssi=-96 bssid=38:21:87:1f:5e:db
+I (28844) t_wifi: DeepStoa config: connecting to my_test_wifi channel=1 bssid=42:d1:33:36:96:51 (password length=12)
+I (28874) wifi:new:<1,0>, old:<1,0>, ap:<255,255>, sta:<1,0>, prof:1, snd_ch_cfg:0x0
+I (28874) wifi:state: init -> auth (0xb0)
+I (28874) wifi:state: auth -> assoc (0x0)
+I (28884) wifi:state: assoc -> run (0x10)
+I (29004) wifi:connected with my_test_wifi, aid = 7, channel 1, BW20, bssid = 42:d1:33:36:96:51
+I (29014) wifi:security: WPA2-PSK, phy: bgn, rssi: -31
+I (29014) wifi:pm start, type: 1
+
+I (29014) wifi:set rx beacon pti, rx_bcn_pti: 0, bcn_timeout: 25000, mt_pti: 0, mt_time: 10000
+I (29024) t_wifi: associated; waiting for IP
+I (29084) wifi:AP's beacon interval = 102400 us, DTIM period = 3
+I (31554) esp_netif_handlers: sta ip: 192.168.137.172, mask: 255.255.255.0, gw: 192.168.137.1
+I (31554) t_wifi: got IP: 192.168.137.172
+I (31554) t_wifi: my_test_wifi / DeepStoa config: PASS
+I (31554) t_wifi: TX_DIAG IP PASS; Internet check skipped
+I (31564) wifi:state: run -> init (0x0)
+I (31564) wifi:pm stop, total sleep time: 1375074 us / 2553008 us
+
+I (31574) wifi:new:<1,0>, old:<1,0>, ap:<255,255>, sta:<1,0>, prof:1, snd_ch_cfg:0x0
+W (31584) t_wifi: disconnected: reason=8 rssi=-31 bssid=42:d1:33:36:96:51
+I (32084) t_wifi: ESP-IDF defaults: connecting to my_test_wifi channel=1 bssid=42:d1:33:36:96:51 (password length=12)
+W (32084) wifi:Password length matches WPA2 standards, authmode threshold changes from OPEN to WPA2
+I (32104) wifi:new:<1,0>, old:<1,0>, ap:<255,255>, sta:<1,0>, prof:1, snd_ch_cfg:0x0
+I (32114) wifi:state: init -> auth (0xb0)
+I (32114) wifi:state: auth -> assoc (0x0)
+I (32124) wifi:state: assoc -> run (0x10)
+I (32184) wifi:connected with my_test_wifi, aid = 8, channel 1, BW20, bssid = 42:d1:33:36:96:51
+I (32184) wifi:security: WPA2-PSK, phy: bgn, rssi: -36
+I (32184) wifi:pm start, type: 1
+
+I (32184) wifi:set rx beacon pti, rx_bcn_pti: 0, bcn_timeout: 25000, mt_pti: 0, mt_time: 10000
+I (32204) t_wifi: associated; waiting for IP
+I (32254) wifi:AP's beacon interval = 102400 us, DTIM period = 3
+I (34214) esp_netif_handlers: sta ip: 192.168.137.172, mask: 255.255.255.0, gw: 192.168.137.1
+I (34214) t_wifi: got IP: 192.168.137.172
+I (34214) t_wifi: my_test_wifi / ESP-IDF defaults: PASS
+I (34214) t_wifi: TX_DIAG IP PASS; Internet check skipped
+I (34224) wifi:state: run -> init (0x0)
+I (34224) wifi:pm stop, total sleep time: 1227290 us / 2041983 us
+
+I (34234) wifi:new:<1,0>, old:<1,0>, ap:<255,255>, sta:<1,0>, prof:1, snd_ch_cfg:0x0
+W (34244) t_wifi: disconnected: reason=8 rssi=-33 bssid=42:d1:33:36:96:51
+I (34744) t_wifi: network test finished: my_test_wifi
+W (34744) t_wifi: TX_DIAG full_calibration=1 requested_qdbm=76 actual_qdbm=76
+I (34744) t_wifi: network test started: my_test_wifi
+I (34744) t_wifi: scanning for my_test_wifi
+I (38454) t_wifi: scan: ssid=CU_u5Uq auth=3 channel=6 rssi=-27 bssid=78:dd:33:ee:66:68
+I (38454) t_wifi: scan: ssid=STB_u5Uq auth=3 channel=6 rssi=-27 bssid=78:dd:33:ee:66:6a
+I (38454) t_wifi: scan: ssid=Ruijie-PRO auth=4 channel=6 rssi=-30 bssid=10:82:3d:8c:ac:05
+I (38464) t_wifi: scan: ssid=CMCC-ayrw auth=4 channel=1 rssi=-31 bssid=ec:cf:70:6d:32:56
+I (38474) t_wifi: scan: ssid= auth=4 channel=6 rssi=-31 bssid=12:82:3d:5c:ac:05
+I (38484) t_wifi: scan: ssid=my_test_wifi auth=3 channel=1 rssi=-32 bssid=42:d1:33:36:96:51
+I (38484) t_wifi: target scan: auth=3 channel=1 rssi=-32 bssid=42:d1:33:36:96:51
+I (38494) t_wifi: scan: ssid=CU_2RZz auth=4 channel=9 rssi=-53 bssid=20:20:51:e2:cb:e4
+I (38504) t_wifi: scan: ssid=bai auth=4 channel=11 rssi=-56 bssid=98:97:cc:f8:6c:cb
+I (38514) t_wifi: scan: ssid= auth=4 channel=11 rssi=-56 bssid=a2:97:cc:f8:6c:cb
+I (38514) t_wifi: scan: ssid=WP-WP666 auth=4 channel=1 rssi=-57 bssid=cc:08:fb:d3:22:34
+I (38524) t_wifi: scan: ssid=cdlkk auth=4 channel=1 rssi=-66 bssid=ec:41:18:e6:39:ea
+I (38534) t_wifi: scan: ssid=huazi auth=3 channel=11 rssi=-66 bssid=3c:93:f4:ee:a5:ac
+I (38544) t_wifi: scan: ssid=Xiaomi_CC70 auth=3 channel=10 rssi=-68 bssid=5c:02:14:f7:15:6a
+I (38544) t_wifi: scan: ssid= auth=0 channel=10 rssi=-69 bssid=62:02:14:f7:15:6a
+I (38554) t_wifi: scan: ssid=CMCC-1-301 auth=4 channel=11 rssi=-70 bssid=96:d2:bc:4f:d7:6c
+I (38564) t_wifi: scan: ssid=CU_h94E auth=3 channel=11 rssi=-71 bssid=66:5e:10:fa:24:64
+I (38574) t_wifi: scan: ssid=DC2902391610000B07060026 auth=3 channel=1 rssi=-72 bssid=50:13:95:4f:a2:1a
+I (38584) t_wifi: scan: ssid=26-201 auth=3 channel=6 rssi=-73 bssid=d8:68:52:ad:a4:4c
+I (38584) t_wifi: scan: ssid=601 auth=3 channel=6 rssi=-73 bssid=7e:00:4d:03:96:84
+I (38594) t_wifi: scan: ssid=CU_Zk9C auth=4 channel=9 rssi=-78 bssid=1c:67:4a:11:20:c5
+I (38604) t_wifi: scan: ssid=602 auth=3 channel=11 rssi=-80 bssid=a2:35:ba:d5:b9:57
+I (38614) t_wifi: scan: ssid=26-201 auth=3 channel=1 rssi=-81 bssid=60:53:75:8d:ed:40
+I (38614) t_wifi: scan: ssid=ChinaNet-syYbKS auth=4 channel=8 rssi=-81 bssid=68:77:da:1b:c4:0c
+I (38624) t_wifi: scan: ssid=GAO auth=4 channel=1 rssi=-82 bssid=90:7e:43:ff:84:7c
+I (38634) t_wifi: scan: ssid= auth=3 channel=1 rssi=-82 bssid=92:7e:43:9f:84:7c
+I (38644) t_wifi: scan: ssid= auth=4 channel=8 rssi=-82 bssid=6a:77:da:3b:c4:0c
+I (38644) t_wifi: scan: ssid= auth=0 channel=10 rssi=-82 bssid=8e:c3:97:c4:f4:a6
+I (38654) t_wifi: scan: ssid=huazi auth=3 channel=6 rssi=-83 bssid=d8:68:52:af:2b:3c
+I (38664) t_wifi: scan: ssid=CMCC-1-301_plus auth=4 channel=11 rssi=-83 bssid=3c:cd:57:1c:17:19
+I (38674) t_wifi: scan: ssid=大能有点能-2.4G auth=7 channel=9 rssi=-85 bssid=dc:8e:8d:cd:9d:48
+I (38674) t_wifi: scan: ssid=602 auth=3 channel=11 rssi=-86 bssid=c0:8b:05:5c:4a:48
+I (38684) t_wifi: scan: ssid=402 auth=3 channel=6 rssi=-87 bssid=4e:d0:dd:95:92:9c
+I (38694) t_wifi: scan: ssid=Hu001 auth=3 channel=1 rssi=-88 bssid=88:69:3d:bc:d8:b0
+I (38704) t_wifi: scan: ssid=CMCC-2jvw auth=4 channel=5 rssi=-90 bssid=ec:e7:c2:00:e5:48
+I (38704) t_wifi: scan: ssid=CU_kDs9 auth=4 channel=5 rssi=-90 bssid=20:20:51:e2:e5:7c
+I (38714) t_wifi: scan: ssid= auth=3 channel=11 rssi=-90 bssid=44:c7:fc:80:50:1d
+I (38724) t_wifi: scan: ssid=CMCC-kAmf auth=4 channel=9 rssi=-91 bssid=ac:88:66:a0:f9:73
+I (38734) t_wifi: scan: ssid=ChinaUnicom-zhang auth=4 channel=11 rssi=-91 bssid=44:c7:fc:80:50:18
+I (38744) t_wifi: scan: ssid=CMCC-MAGM auth=4 channel=11 rssi=-92 bssid=da:88:63:b3:54:d0
+I (38744) t_wifi: scan: ssid=CAR-DVR-5409 auth=3 channel=6 rssi=-93 bssid=00:c6:81:a9:54:09
+I (38754) t_wifi: scan: ssid=Hu001 auth=3 channel=1 rssi=-94 bssid=bc:1e:85:b9:50:b4
+I (38764) t_wifi: scan: ssid=HXL202_5G_plus auth=4 channel=6 rssi=-94 bssid=44:df:65:2d:4b:32
+I (38774) t_wifi: scan: ssid=fatyu0814 auth=3 channel=11 rssi=-94 bssid=4a:70:6f:0c:ab:08
+I (38784) t_wifi: scan: ssid=midea_ca_0790 auth=3 channel=11 rssi=-95 bssid=38:21:87:1f:5e:db
+I (38784) t_wifi: scan: ssid=7895_EXT auth=3 channel=1 rssi=-96 bssid=58:d9:d5:83:17:e9
+I (38794) t_wifi: DeepStoa config: connecting to my_test_wifi channel=1 bssid=42:d1:33:36:96:51 (password length=12)
+I (38914) wifi:new:<1,0>, old:<1,0>, ap:<255,255>, sta:<1,0>, prof:1, snd_ch_cfg:0x0
+I (38914) wifi:state: init -> auth (0xb0)
+I (39924) wifi:state: auth -> init (0x200)
+I (39924) wifi:new:<1,0>, old:<1,0>, ap:<255,255>, sta:<1,0>, prof:1, snd_ch_cfg:0x0
+W (39924) t_wifi: disconnected: reason=2 rssi=-32 bssid=42:d1:33:36:96:51
+E (39924) t_wifi: my_test_wifi / DeepStoa config: FAIL (disconnected)
+I (40434) t_wifi: ESP-IDF defaults: connecting to my_test_wifi channel=1 bssid=42:d1:33:36:96:51 (password length=12)
+W (40434) wifi:Password length matches WPA2 standards, authmode threshold changes from OPEN to WPA2
+I (40454) wifi:new:<1,0>, old:<1,0>, ap:<255,255>, sta:<1,0>, prof:1, snd_ch_cfg:0x0
+I (40454) wifi:state: init -> auth (0xb0)
+I (41454) wifi:state: auth -> init (0x200)
+I (41464) wifi:new:<1,0>, old:<1,0>, ap:<255,255>, sta:<1,0>, prof:1, snd_ch_cfg:0x0
+W (41464) t_wifi: disconnected: reason=2 rssi=-32 bssid=42:d1:33:36:96:51
+E (41464) t_wifi: my_test_wifi / ESP-IDF defaults: FAIL (disconnected)
+I (41974) t_wifi: network test finished: my_test_wifi
+I (41974) t_wifi: test finished
+I (41974) main_task: Returned from app_main()

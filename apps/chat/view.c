@@ -5,8 +5,8 @@
 
 #include "app.h"
 #include "view.h"
-#include "subpages/view_main.h"
-#include "subpages/view_history.h"
+#include "pages/view_main.h"
+#include "pages/view_history.h"
 
 static const char *TAG = "chat_view";
 

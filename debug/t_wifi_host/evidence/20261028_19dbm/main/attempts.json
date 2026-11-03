@@ -1,0 +1,164 @@
+[
+  {
+    "power": [
+      76,
+      76
+    ],
+    "start": 6.907,
+    "profile": "DeepStoa config",
+    "end": 8.032,
+    "result": "E (5914) t_wifi: my_test_wifi / DeepStoa config: FAIL (disconnected)",
+    "frames": {
+      "BEACON": 13
+    }
+  },
+  {
+    "power": [
+      76,
+      76
+    ],
+    "start": 8.532,
+    "profile": "ESP-IDF defaults",
+    "end": 9.578,
+    "result": "E (7464) t_wifi: my_test_wifi / ESP-IDF defaults: FAIL (disconnected)",
+    "frames": {
+      "BEACON": 12
+    }
+  },
+  {
+    "power": [
+      8,
+      8
+    ],
+    "start": 14.125,
+    "profile": "DeepStoa config",
+    "end": 15.344,
+    "result": "I (13234) t_wifi: my_test_wifi / DeepStoa config: PASS",
+    "frames": {
+      "BEACON": 15,
+      "PROBE_RESP AP->STA": 2,
+      "AUTH STA->AP": 1,
+      "AUTH AP->STA": 2,
+      "ASSOC_REQ STA->AP": 1,
+      "ASSOC_RESP AP->STA": 2,
+      "DATA/EAPOL AP->STA": 4,
+      "DATA/EAPOL STA->AP": 2,
+      "DISASSOC STA->AP": 1
+    }
+  },
+  {
+    "power": [
+      8,
+      8
+    ],
+    "start": 15.875,
+    "profile": "ESP-IDF defaults",
+    "end": 18.828,
+    "result": "I (16714) t_wifi: my_test_wifi / ESP-IDF defaults: PASS",
+    "frames": {
+      "BEACON": 32,
+      "PROBE_RESP AP->STA": 2,
+      "AUTH STA->AP": 1,
+      "AUTH AP->STA": 2,
+      "ASSOC_REQ STA->AP": 1,
+      "ASSOC_RESP AP->STA": 2,
+      "DATA/EAPOL AP->STA": 3,
+      "DATA/EAPOL STA->AP": 2,
+      "DISASSOC STA->AP": 1
+    }
+  },
+  {
+    "power": [
+      76,
+      76
+    ],
+    "start": 23.391,
+    "profile": "DeepStoa config",
+    "end": 24.438,
+    "result": "E (22314) t_wifi: my_test_wifi / DeepStoa config: FAIL (disconnected)",
+    "frames": {
+      "BEACON": 13
+    }
+  },
+  {
+    "power": [
+      76,
+      76
+    ],
+    "start": 24.938,
+    "profile": "ESP-IDF defaults",
+    "end": 25.969,
+    "result": "E (23854) t_wifi: my_test_wifi / ESP-IDF defaults: FAIL (disconnected)",
+    "frames": {
+      "BEACON": 13
+    }
+  },
+  {
+    "power": [
+      8,
+      8
+    ],
+    "start": 30.969,
+    "profile": "DeepStoa config",
+    "end": 33.672,
+    "result": "I (31554) t_wifi: my_test_wifi / DeepStoa config: PASS",
+    "frames": {
+      "PROBE_RESP AP->STA": 2,
+      "BEACON": 28,
+      "AUTH STA->AP": 1,
+      "AUTH AP->STA": 2,
+      "ASSOC_REQ STA->AP": 1,
+      "ASSOC_RESP AP->STA": 2,
+      "DATA/EAPOL AP->STA": 4,
+      "DATA/EAPOL STA->AP": 2,
+      "DISASSOC STA->AP": 7
+    }
+  },
+  {
+    "power": [
+      8,
+      8
+    ],
+    "start": 34.188,
+    "profile": "ESP-IDF defaults",
+    "end": 36.328,
+    "result": "I (34214) t_wifi: my_test_wifi / ESP-IDF defaults: PASS",
+    "frames": {
+      "BEACON": 24,
+      "PROBE_RESP AP->STA": 2,
+      "AUTH STA->AP": 1,
+      "AUTH AP->STA": 2,
+      "ASSOC_REQ STA->AP": 2,
+      "ASSOC_RESP AP->STA": 2,
+      "DATA/EAPOL AP->STA": 4,
+      "DATA/EAPOL STA->AP": 2,
+      "DISASSOC STA->AP": 1
+    }
+  },
+  {
+    "power": [
+      76,
+      76
+    ],
+    "start": 40.922,
+    "profile": "DeepStoa config",
+    "end": 42.047,
+    "result": "E (39924) t_wifi: my_test_wifi / DeepStoa config: FAIL (disconnected)",
+    "frames": {
+      "BEACON": 13
+    }
+  },
+  {
+    "power": [
+      76,
+      76
+    ],
+    "start": 42.547,
+    "profile": "ESP-IDF defaults",
+    "end": 43.578,
+    "result": "E (41464) t_wifi: my_test_wifi / ESP-IDF defaults: FAIL (disconnected)",
+    "frames": {
+      "BEACON": 13
+    }
+  }
+]

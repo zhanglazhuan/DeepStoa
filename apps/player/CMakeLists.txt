@@ -8,9 +8,9 @@ idf_component_register(
         "view.c"
         "controller.c"
         "service/player_library.c"
-        "subpages/view_list.c"
-        "subpages/view_play.c"
-    INCLUDE_DIRS "." "subpages" "service"
+        "pages/view_list.c"
+        "pages/view_play.c"
+    INCLUDE_DIRS "." "pages" "service"
     REQUIRES lvgl
     PRIV_REQUIRES appmgr uilv controller audio
 )

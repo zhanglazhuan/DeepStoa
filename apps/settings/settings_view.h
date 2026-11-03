@@ -31,7 +31,7 @@ enum settings_page_id_t {
     PAGE_UPDATES,                   // Phase 2
     PAGE_UPDATES_DOWNLOAD,          // Phase 2
     PAGE_UPDATES_SD_SELECT,         // Phase 2
-    PAGE_GENERAL_MANUAL_DATETIME,
+    PAGE_GENERAL_DATETIME_EDIT,
 };
 
 #define SETTINGS_PAGE_ID_MAX    21

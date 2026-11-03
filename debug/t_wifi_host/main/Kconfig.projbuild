@@ -1,0 +1,48 @@
+menu "Wi-Fi sniffer test"
+
+config SNIFFER_CHANNEL
+    int "Fixed primary channel"
+    range 1 13
+    default 1
+
+config SNIFFER_STA_MAC
+    string "Faulty board STA MAC (empty = observe all stations)"
+    default ""
+    help
+        Use the faulty board's Wi-Fi station MAC, not its BLE/SoftAP MAC.
+        Format: aa:bb:cc:dd:ee:ff.
+
+config SNIFFER_AP_MAC
+    string "AP BSSID (empty = observe all APs)"
+    default ""
+
+config SNIFFER_WINDOW_MS
+    int "Authentication observation window (ms)"
+    range 1000 30000
+    default 4400
+
+config SNIFFER_ACK
+    bool "Log ACK frames (requires a STA MAC or AP BSSID filter)"
+    default n
+
+config SNIFFER_RX_ERRORS
+    bool "Observe driver-delivered receive errors (untrusted source)"
+    default n
+    help
+        Enables the FCSFAIL promiscuous filter. Logs metadata only, without
+        parsing damaged payloads or attributing them to the target STA.
+        At most 10 error records per second are queued; all errors counted.
+
+config SNIFFER_RAW
+    bool "Print captured frame bytes for conversion to PCAP"
+    default n
+    help
+        Emits CAP records for selected frames, excluding the FCS.
+        High serial traffic can cause queue drops. Use a MAC filter.
+
+config SNIFFER_SNAPLEN
+    int "Maximum captured bytes per frame"
+    range 128 1600
+    default 256
+
+endmenu

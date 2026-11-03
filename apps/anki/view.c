@@ -3,14 +3,14 @@
 #include "view.h"
 #include "app.h"
 
-#include "./subpages/view_decks.h"
-#include "./subpages/view_study.h"
-#include "./subpages/view_settings.h"
-#include "./subpages/view_stats.h"
-#include "./subpages/view_import.h"
-#include "./subpages/view_file_selector.h"
-#include "./subpages/view_trash.h"
-#include "./subpages/view_deck_form.h"
+#include "./pages/view_decks.h"
+#include "./pages/view_study.h"
+#include "./pages/view_settings.h"
+#include "./pages/view_stats.h"
+#include "./pages/view_import.h"
+#include "./pages/view_file_selector.h"
+#include "./pages/view_trash.h"
+#include "./pages/view_deck_form.h"
 
 bool anki_view_init(AnkiApp *app) {
     if (!app) return false;

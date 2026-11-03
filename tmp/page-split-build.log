@@ -1,0 +1,57 @@
+Executing action: all (aliases: build)
+Running ninja in directory D:\Codes\DeepStoa\build
+Executing "ninja all"...
+[1/10] Linking C static library esp-idf\mistakebook\libmistakebook.a
+
+[2/10] Performing build step for 'bootloader'
+
+[1/1] C:\Windows\system32\cmd.exe /C "cd /D D:\Codes\DeepStoa\build\bootloader\esp-idf\esptool_py && C:\Espressif\python_env\idf5.5_py3.12_env\Scripts\python.exe C:/Espressif/frameworks/esp-idf-v5.5.3/components/partition_table/check_sizes.py --offset 0x8000 bootloader 0x0 D:/Codes/DeepStoa/build/bootloader/bootloader.bin"
+
+
+Bootloader binary size 0x5100 bytes. 0x2f00 bytes (37%) free.
+
+
+
+[3/10] No install step for 'bootloader'
+
+[4/10] Completed 'bootloader'
+
+[5/10] Building C object esp-idf/settings/CMakeFiles/__idf_settings.dir/widgets/passcode_input.c.obj
+
+[6/10] Linking C static library esp-idf\settings\libsettings.a
+
+[7/10] Generating esp-idf/esp_system/ld/sections.ld
+
+[8/10] Linking CXX executable DeepStoa.elf
+
+[9/10] Generating binary image from built executable
+
+esptool.py v4.12.0
+
+
+Creating esp32s3 image...
+
+
+Merged 2 ELF sections
+
+
+Successfully created esp32s3 image.
+
+
+Generated D:/Codes/DeepStoa/build/DeepStoa.bin
+
+[10/10] C:\Windows\system32\cmd.exe /C "cd /D D:\Codes\DeepStoa\build\esp-idf\esptool_py && C:\Espressif\python_env\idf5.5_py3.12_env\Scripts\python.exe C:/Espressif/frameworks/esp-idf-v5.5.3/components/partition_table/check_sizes.py --offset 0x8000 partition --type app D:/Codes/DeepStoa/build/partition_table/partition-table.bin D:/Codes/DeepStoa/build/DeepStoa.bin"
+
+DeepStoa.bin binary size 0x28bb10 bytes. Smallest app partition is 0x300000 bytes. 0x744f0 bytes (15%) free.
+
+
+
+
+Project build complete. To flash, run:
+ idf.py flash
+or
+ idf.py -p PORT flash
+or
+ python -m esptool --chip esp32s3 -b 460800 --before default_reset --after hard_reset write_flash --flash_mode dio --flash_size 16MB --flash_freq 40m 0x0 build\bootloader\bootloader.bin 0x8000 build\partition_table\partition-table.bin 0xf000 build\ota_data_initial.bin 0x20000 build\DeepStoa.bin
+or from the "D:\Codes\DeepStoa\build" directory
+ python -m esptool --chip esp32s3 -b 460800 --before default_reset --after hard_reset write_flash "@flash_args"

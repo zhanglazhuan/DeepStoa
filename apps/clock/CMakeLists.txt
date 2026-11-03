@@ -6,9 +6,11 @@ idf_component_register(
         "model.c"
         "view.c"
         "controller.c"
-        "subpages/view_main.c"
-        "subpages/view_alarm_edit.c"
-        "subpages/view_timer_preset.c"
+        "pages/view_main.c"
+        "pages/view_alarm.c"
+        "pages/view_timer.c"
+        "pages/view_alarm_edit.c"
+        "pages/view_timer_preset.c"
     INCLUDE_DIRS "."
     REQUIRES lvgl alarm
     PRIV_REQUIRES uilv appmgr controller time

@@ -47,7 +47,7 @@
    进度条按 4%（=1 分钟）量化，值没变就不重绘。
 2. **接 `lv_epd_region`。** Timer 页正好是「整页只有一块反复在变」，直接
    `epd_region_begin_focus(page.screen, countdown_zone)` 把窗口钉在倒计时+进度条矩形上，之后连
-   `flush_obj()` 都不用再调；离开页面 `epd_region_end()`。参考 `apps/player/subpages/view_play.c:112-166`。
+   `flush_obj()` 都不用再调；离开页面 `epd_region_end()`。参考 `apps/player/pages/view_play.c:112-166`。
 3. **定时器该停就停。** 现在无论是否在计时、是否在 Timer tab，`lv_timer` 都在 1–5 秒醒一次。改成
    `lv_timer_pause()`，恢复时用 `esp_timer_get_time()` 差值补齐 —— 顺手修掉「按 tick 计数当墙钟」的漂移。
 4. **补去残影策略。** 全项目只有 `launcher_gesture.c:134` 用过一次 `EPD_FLUSH_MODE_FULL`。建议在
