@@ -5,16 +5,18 @@
 // Button: GPIO0 (PRG/BOOT button, active low, internal pull-up)
 //
 // Each button press cycles the panel through three full-refresh patterns:
-//   1. 32px grid with centered X/Y coordinate labels
-//   2. all black
-//   3. all white
+//   1. all black
+//   2. all white
+//   3. 32px grid with centered X/Y labels and touch coordinates
 // After every refresh the panel is put into deep sleep; the image persists.
 // Driver shared with debug/t_display (epd_display.c).
 
 #include <string.h>
+#include <stdio.h>
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/queue.h"
 #include "driver/gpio.h"
 #include "driver/i2c_master.h"
 #include "esp_log.h"
@@ -34,15 +36,22 @@ static const char *TAG = "t_quality";
 #define AXIS_Y              (EPD_HEIGHT / 2)
 
 typedef enum {
-    PATTERN_GRID = 0,
-    PATTERN_BLACK,
+    PATTERN_BLACK = 0,
     PATTERN_WHITE,
+    PATTERN_GRID,
     PATTERN_COUNT
 } pattern_t;
 
 static const char *pattern_name[PATTERN_COUNT] = {
-    "32px grid", "black", "white",
+    "black", "white", "32px grid",
 };
+
+typedef struct {
+    uint16_t x;
+    uint16_t y;
+} touch_click_t;
+
+static QueueHandle_t touch_clicks;
 
 // 1 bit per pixel, 1 = white, 0 = black; columns contain EPD_HEIGHT/8 bytes.
 static uint8_t framebuffer[EPD_ARRAY];
@@ -81,9 +90,18 @@ static void draw_number_label(uint8_t *buf, int x, int y, const char *label)
     }
     for (int i = 0; i < len; ++i) {
         int glyph = label[i] - '0';
+        static const uint8_t x_glyph[7] = {17, 17, 10, 4, 10, 17, 17};
+        static const uint8_t y_glyph[7] = {17, 17, 10, 4, 4, 4, 4};
+        static const uint8_t colon_glyph[7] = {0, 4, 4, 0, 4, 4, 0};
+        const uint8_t *rows = NULL;
+        if (glyph >= 0 && glyph <= 9) rows = digit_glyphs[glyph];
+        else if (label[i] == 'X') rows = x_glyph;
+        else if (label[i] == 'Y') rows = y_glyph;
+        else if (label[i] == ':') rows = colon_glyph;
+        if (!rows) continue;
         for (int row = 0; row < 7; ++row) {
             for (int col = 0; col < 5; ++col) {
-                if (digit_glyphs[glyph][row] & (1u << (4 - col))) {
+                if (rows[row] & (1u << (4 - col))) {
                     put_pixel(buf, x + i * 6 + col, y + row, true);
                 }
             }
@@ -200,7 +218,7 @@ static bool button_poll_press(void)
     return gpio_get_level(BUTTON_GPIO) == 0;
 }
 
-/* Keep logging touch coordinates while the main task refreshes the e-ink panel. */
+/* Capture clicks during refresh; only the main task accesses the panel. */
 static void touch_poll_task(void *arg)
 {
     (void)arg;
@@ -214,6 +232,11 @@ static void touch_poll_task(void *arg)
                           touch.points[0].event != FT6336_EVENT_UP &&
                           touch.points[0].event != FT6336_EVENT_NONE;
             if (active && !touch_active) {
+                touch_click_t click = {
+                    .x = touch.points[0].x,
+                    .y = touch.points[0].y,
+                };
+                xQueueOverwrite(touch_clicks, &click);
                 ESP_LOGI(TAG, "Touch click: x=%u y=%u",
                          (unsigned)touch.points[0].x,
                          (unsigned)touch.points[0].y);
@@ -271,24 +294,53 @@ void app_main(void)
                                       DEVKIT_TOUCH_I2C_ADDR);
     bool touch_ready = touch_err == ESP_OK;
     if (!touch_ready) diagnose_touch_bus(touch_err);
+    touch_clicks = xQueueCreate(1, sizeof(touch_click_t));
+    if (!touch_clicks) {
+        ESP_LOGW(TAG, "Could not allocate touch click queue");
+        touch_ready = false;
+    }
     if (touch_ready && xTaskCreate(touch_poll_task, "quality_touch", 3072,
                                    NULL, 5, NULL) != pdPASS) {
-        ESP_LOGW(TAG, "Could not start touch coordinate logger");
+        ESP_LOGW(TAG, "Could not start touch polling");
         touch_ready = false;
     }
     ESP_LOGI(TAG, "%s: GPIO, SPI, button and touch initialized",
              touch_ready ? "PASS" : "WARN (touch disabled)");
 
-    pattern_t current = PATTERN_GRID;
+    pattern_t current = PATTERN_BLACK;
     show_pattern(current);
 
-    ESP_LOGI(TAG, "Press GPIO%d to cycle: grid -> black -> white",
+    ESP_LOGI(TAG, "Press BOOT (GPIO%d) to cycle: black -> white -> grid",
              BUTTON_GPIO);
 
     while (1) {
         if (button_poll_press()) {
             current = (current + 1) % PATTERN_COUNT;
+            if (touch_clicks) xQueueReset(touch_clicks);
             show_pattern(current);
+        }
+
+        touch_click_t click;
+        if (touch_clicks && xQueueReceive(touch_clicks, &click, 0) == pdTRUE &&
+            current == PATTERN_GRID) {
+            char label[24];
+            snprintf(label, sizeof(label), "X:%u Y:%u",
+                     (unsigned)click.x, (unsigned)click.y);
+            int label_width = (int)strlen(label) * 6;
+            int label_x = click.x;
+            int label_y = click.y;
+            if (label_x > EPD_WIDTH - label_width - 1) {
+                label_x = EPD_WIDTH - label_width - 1;
+            }
+            if (label_y > EPD_HEIGHT - 8) label_y = EPD_HEIGHT - 8;
+            if (label_x < 1) label_x = 1;
+            if (label_y < 1) label_y = 1;
+            fill_grid(framebuffer);
+            draw_number_label(framebuffer, label_x, label_y, label);
+            // Full refresh clears the previous coordinates and avoids ghosting.
+            EPD_HW_Init();
+            EPD_WhiteScreen_ALL(framebuffer);
+            EPD_DeepSleep();
         }
 
         vTaskDelay(pdMS_TO_TICKS(BUTTON_POLL_MS));
