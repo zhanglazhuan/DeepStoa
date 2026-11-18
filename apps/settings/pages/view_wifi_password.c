@@ -12,7 +12,7 @@
 #include "settings_app.h"
 #include "settings_model.h"
 #include "settings_view.h"
-#include "modules/controller_wifi.h"
+#include "controller_wifi.h"
 #include "view_wifi_password.h"
 
 static const char *TAG = "settings_wifi_password";

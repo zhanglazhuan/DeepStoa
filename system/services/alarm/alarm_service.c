@@ -26,6 +26,8 @@ static const char *TAG = "alarm_svc";
 #define KEY_LIST     "alm_list"
 #define KEY_ENABLED  "alm_en"
 #define KEY_PRESETS  "alm_pre"
+#define KEY_TIMER_SECONDS "alm_timer"
+#define DEFAULT_TIMER_SECONDS (25U * 60U)
 
 extern struct fdb_kvdb g_kvdb;
 
@@ -73,6 +75,17 @@ static void save_presets(void)
     fdb_kv_set_blob(&g_kvdb, KEY_PRESETS, fdb_blob_make(&blob, s_alarm_ctx.presets, sizeof(s_alarm_ctx.presets)));
 }
 
+static void save_timer_duration(void)
+{
+    struct fdb_blob blob;
+    fdb_err_t err = fdb_kv_set_blob(&g_kvdb, KEY_TIMER_SECONDS,
+        fdb_blob_make(&blob, &s_alarm_ctx.timer.set_seconds,
+                      sizeof(s_alarm_ctx.timer.set_seconds)));
+    if (err != FDB_NO_ERR) {
+        ESP_LOGE(TAG, "saving timer duration failed: %d", (int)err);
+    }
+}
+
 bool alarm_service_factory_reset(void)
 {
     memset(s_alarm_ctx.alarms, 0, sizeof(s_alarm_ctx.alarms));
@@ -97,6 +110,7 @@ bool alarm_service_factory_reset(void)
     save_list();
     save_enabled();
     save_presets();
+    alarm_service_timer_set(DEFAULT_TIMER_SECONDS);
 
     ESP_LOGI(TAG, "factory reset done");
     return true;
@@ -245,11 +259,13 @@ static void timer_tick_cb(lv_timer_t *t)
 
 void alarm_service_timer_set(uint32_t seconds)
 {
+    bool changed = s_alarm_ctx.timer.set_seconds != seconds;
     timer_stop_tick();
     s_alarm_ctx.timer.set_seconds     = seconds;
     s_alarm_ctx.timer.remaining_ms    = seconds * 1000u;
     s_alarm_ctx.timer.state           = ALARM_TIMER_IDLE;
     s_alarm_ctx.timer.start_uptime_ms = 0;
+    if (changed) save_timer_duration();
 }
 
 uint32_t alarm_service_timer_set_seconds(void) { return s_alarm_ctx.timer.set_seconds; }
@@ -443,8 +459,18 @@ void alarm_service_init(void)
 
     load();
 
-    /* 默认 25 分钟，和番茄钟对齐 */
-    alarm_service_timer_set(25 * 60);
+    /* Restore the configured duration, never the in-progress countdown.
+     * Older firmware has no timer key; fall back to 25 minutes. */
+    uint32_t seconds = DEFAULT_TIMER_SECONDS;
+    struct fdb_blob blob;
+    size_t n = fdb_kv_get_blob(&g_kvdb, KEY_TIMER_SECONDS,
+        fdb_blob_make(&blob, &seconds, sizeof(seconds)));
+    if (n != sizeof(seconds) || seconds > 999U * 60U) {
+        seconds = DEFAULT_TIMER_SECONDS;
+    }
+    /* Preload so restoring at boot does not rewrite Flash. */
+    s_alarm_ctx.timer.set_seconds = seconds;
+    alarm_service_timer_set(seconds);
 
     app_event_register(on_clock_tick);
 

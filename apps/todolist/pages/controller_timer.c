@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include <limits.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include "esp_log.h"
 
 #include "controller_timer.h"
@@ -18,8 +19,8 @@ extern TodoListApp g_todolist_app;
 
 /* 轮询周期。这个定时器只唤醒 CPU 去比对显示值，不等于一次面板刷新 ——
  * 面板只在 todolist_view_timer_display_key() 变化时才推一帧。
- * 5 秒足够：最细的显示粒度是 10 秒。 */
-#define TIMER_POLL_PERIOD_MS 5000
+ * 每秒检查一次，让 MM:SS 倒计时逐秒更新。 */
+#define TIMER_POLL_PERIOD_MS 1000
 
 static void timer_tick_cb(lv_timer_t * timer);
 
@@ -51,7 +52,10 @@ static void timer_tick_cb(lv_timer_t * timer) {
     (void)timer;
     TodoListController* controller = g_todolist_app.controller;
     if(!controller || !controller->timer_ctx) return;
-    if(!todolist_model_timer_is_running(controller->model)) return;
+    if(!todolist_model_timer_is_running(controller->model)) {
+        controller_timer_pause_polling(controller);
+        return;
+    }
 
     todolist_task_t * t = todolist_model_get_active_task(controller->model);
     if(!t) return;
@@ -68,6 +72,7 @@ static void timer_tick_cb(lv_timer_t * timer) {
 
         todolist_model_mark_task_done(controller->model, done_id);
         todolist_model_set_active_task(controller->model, 0);
+        controller_timer_pause_polling(controller);
         timer_invalidate_display_key(controller);
         todolist_view_timer_sync(NULL, false);
         todolist_storage_flush();   /* 任务完成是个值得立刻落盘的节点 */
@@ -128,11 +133,12 @@ void controller_on_timer_start_pause(lv_event_t * e) {
         controller_timer_resume_polling(controller);
     }
 
-    /* 只有按钮文案变了，把刷新窗口切到按钮上，别整屏刷 */
-    todolist_view_timer_set_running(running);
     /* 暂停/继续时把剩余时间也对一次，避免显示停在上一档 */
     timer_invalidate_display_key(controller);
     timer_push_display(controller, false);
+    /* Last, include both changed areas in the same LVGL frame. Otherwise
+     * the countdown window can hide the Pause/Start button update. */
+    todolist_view_timer_set_running(running);
 }
 
 /* 停表并把当前任务切到 next_id（0 = 没有下一个）。

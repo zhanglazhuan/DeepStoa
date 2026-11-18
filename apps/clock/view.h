@@ -61,11 +61,11 @@ typedef struct TimerTabCtx {
 } TimerTabCtx;
 
 typedef struct TimerPresetEditCtx {
-    /* 一次性的任意时长：输入分钟数直接开始，不用先改快捷键 */
+    /* 返回时保存当前时长；未修改时保持正在运行的倒计时。 */
     lv_obj_t *ta_custom;
     /* 4 个快捷时长 */
     lv_obj_t *ta_presets[ALARM_PRESET_COUNT];
-    lv_obj_t *btn_save;
+    unsigned initial_custom_minutes;
 } TimerPresetEditCtx;
 
 /* ── Alarm-edit page context ─────────────────────────────────── */

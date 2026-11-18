@@ -73,10 +73,8 @@ void clock_view_timer_refresh_chips(ClockApp *app)
         else      lv_obj_add_state(ctx->chips[i], LV_STATE_DISABLED);
     }
 
-    if (ctx->chip_more && lv_obj_is_valid(ctx->chip_more)) {
-        if (idle) lv_obj_remove_state(ctx->chip_more, LV_STATE_DISABLED);
-        else      lv_obj_add_state(ctx->chip_more, LV_STATE_DISABLED);
-    }
+    /* Editing saved shortcuts does not change the active timer. Keep Edit
+     * available while running or paused; only applying a preset is disabled. */
 }
 
 lv_obj_t *clock_view_timer_build(lv_obj_t *tab_content, ClockApp *app)

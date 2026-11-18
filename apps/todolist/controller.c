@@ -15,10 +15,10 @@
 #include "utils.h"
 #include "storage.h"
 
-#include "./modules/controller_timer.h"
-#include "./modules/view_todo.h"
-#include "./modules/view_timer.h"
-#include "./modules/view_done.h"
+#include "pages/controller_timer.h"
+#include "pages/view_todo.h"
+#include "pages/view_timer.h"
+#include "pages/view_done.h"
 
 // 全局应用实例
 extern TodoListApp g_todolist_app;

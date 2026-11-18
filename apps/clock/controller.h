@@ -41,8 +41,8 @@ void clock_controller_on_timer_reset(lv_event_t *e);
 /* Timer preset callbacks */
 void clock_controller_on_timer_preset_apply(lv_event_t *e);
 void clock_controller_on_timer_preset_edit_open(lv_event_t *e);
-void clock_controller_on_timer_preset_save(lv_event_t *e);
-void clock_controller_on_timer_custom_use(lv_event_t *e);
+/* Save Timer Duration edits before either header or app-level back navigation. */
+bool clock_controller_back(ClockApp *app);
 
 /* 由 Timer 页在建立 / 销毁时调用，控制刷新定时器的存活 */
 void clock_controller_timer_ui_attach(ClockApp *app);

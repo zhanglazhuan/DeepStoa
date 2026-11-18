@@ -19,12 +19,11 @@ void todolist_view_timer_update(todolist_task_t *t);
 
 /* 只更新倒计时和进度条，并把面板刷新窗口切到这一块 */
 void todolist_view_timer_refresh_progress(const todolist_task_t *t);
-/* 只更新开始/暂停按钮的文案，并把刷新窗口切到按钮 */
+/* 更新开始/暂停按钮，与本帧最终的倒计时使用同一个刷新窗口。 */
 void todolist_view_timer_set_running(bool running);
 
-/* 剩余秒数 → 「显示值」。
- * 墨水屏上没必要跳秒：剩余超过 1 分钟时按分钟显示，最后一分钟按 10 秒显示。
- * 控制器拿这个值做变化检测，值没变就一帧都不推。 */
+/* 剩余秒数 → MM:SS 的显示变化标记。
+ * 控制器按秒检测变化，同一秒内不重复刷新。 */
 uint32_t todolist_view_timer_display_key(uint32_t rem_s);
 
 #endif // TODOLIST_VIEW_TIMER_H

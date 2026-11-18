@@ -27,7 +27,7 @@
 #include "settings_app.h"
 #include "clock_app.h"
 #include "../apps/chat/app.h"
-#include "todolist_app.h"
+#include "../apps/todolist/app.h"
 #include "anki_app.h"
 #include "calendar_app.h"
 #include "news_app.h"

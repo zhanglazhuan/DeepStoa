@@ -17,22 +17,26 @@ __attribute__((unused)) static const char *TAG = "todolist_view_timer";
 // 全局应用实例
 extern TodoListApp g_todolist_app;
 
-/* ── 显示粒度 ─────────────────────────────────────────────────────────── */
+#define TIMER_PROGRESS_MAX 10000
+
+/* Keep sub-percent progress so the bar can advance with the seconds display. */
+static uint32_t progress_value(uint32_t elapsed_s, uint32_t total_s)
+{
+    if (total_s == 0) return 0;
+    if (elapsed_s >= total_s) return TIMER_PROGRESS_MAX;
+    return (uint32_t)((uint64_t)elapsed_s * TIMER_PROGRESS_MAX / total_s);
+}
+
+/* ── 按秒显示 MM:SS ─────────────────────────────────────────────────── */
 
 uint32_t todolist_view_timer_display_key(uint32_t rem_s)
 {
-    /* 两档取值域不能重叠，否则跨档时检测不到变化 */
-    if (rem_s > 60) return 1000 + (rem_s + 59) / 60;  /* 分钟档 */
-    return rem_s / 10;                                /* 最后一分钟：10 秒档 */
+    return rem_s;
 }
 
 static void format_remaining(char *buf, size_t len, uint32_t rem_s)
 {
-    if (rem_s > 60) {
-        snprintf(buf, len, "%u min", (unsigned)((rem_s + 59) / 60));
-    } else {
-        snprintf(buf, len, "%u s", (unsigned)((rem_s / 10) * 10));
-    }
+    snprintf(buf, len, "%02u:%02u", (unsigned)(rem_s / 60), (unsigned)(rem_s % 60));
 }
 
 /* 当前 Timer 页的上下文；不在 Home 页 / Timer tab 没建起来时返回 NULL。
@@ -84,16 +88,27 @@ void view_build_timer_tab(TodoListView* v) {
     lv_obj_set_style_text_font(timer_estimate, LV_FONT_NORMAL, 0);
     timer_ctx->estimate = timer_estimate;
 
-    // 倒计时 + 进度条：这一块是唯一会反复变化的区域，局部刷新窗口就钉在它上面
+    /* 外层负责占位和居中，不纳入每秒刷新的窗口。 */
     lv_obj_t * mid_cont = lv_obj_create(tab);
     lv_obj_remove_style_all(mid_cont); // 移除默认的背景和内边距，使其完全透明
     lv_obj_set_width(mid_cont, LV_PCT(100));
     lv_obj_set_flex_grow(mid_cont, 1);
     lv_obj_set_flex_flow(mid_cont, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(mid_cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    timer_ctx->zone_countdown = mid_cont;
+    lv_obj_clear_flag(mid_cont, LV_OBJ_FLAG_SCROLLABLE);
 
-    lv_obj_t * timer_countdown = lv_label_create(mid_cont);
+    /* 紧凑的快刷区域，只包含 MM:SS 和进度条。固定整宽，避免数字变化
+     * 引发布局变化；高度随内容计算，不刷新外层的空白占位。 */
+    lv_obj_t *countdown_zone = lv_obj_create(mid_cont);
+    lv_obj_remove_style_all(countdown_zone);
+    lv_obj_set_size(countdown_zone, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(countdown_zone, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(countdown_zone, LV_FLEX_ALIGN_START,
+                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_clear_flag(countdown_zone, LV_OBJ_FLAG_SCROLLABLE);
+    timer_ctx->zone_countdown = countdown_zone;
+
+    lv_obj_t * timer_countdown = lv_label_create(countdown_zone);
     lv_obj_set_width(timer_countdown, LV_PCT(100));
     lv_obj_set_style_text_align(timer_countdown, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_margin_top(timer_countdown, 20, 0);
@@ -109,14 +124,14 @@ void view_build_timer_tab(TodoListView* v) {
     lv_obj_clear_flag(timer_countdown, LV_OBJ_FLAG_SCROLLABLE);
     timer_ctx->countdown = timer_countdown;
 
-    lv_obj_t * timer_bar = lv_bar_create(mid_cont);
+    lv_obj_t * timer_bar = lv_bar_create(countdown_zone);
     lv_obj_set_size(timer_bar, LV_PCT(100), 12);
-    lv_bar_set_range(timer_bar, 0, 100);
+    lv_bar_set_range(timer_bar, 0, TIMER_PROGRESS_MAX);
     lv_bar_set_value(timer_bar, 0, LV_ANIM_OFF);
     lv_obj_set_style_margin_top(timer_bar, 10, 0);
     timer_ctx->progress_bar = timer_bar;
 
-    // 一排 4 个调整按钮：-10 min -5 min +5 min +10 min
+    // 一排 4 个调整按钮：' 表示分钟。
     lv_obj_t * btn_cont = lv_obj_create(tab);
     lv_obj_remove_style_all(btn_cont);
     lv_obj_set_width(btn_cont, LV_PCT(100));
@@ -128,7 +143,7 @@ void view_build_timer_tab(TodoListView* v) {
     /* 方角描边而不是纯黑圆形：主题的语言是 radius=2 的硬边，
      * 而且大块黑面积在墨水屏上翻转更慢、残影更重，圆形在 1bpp 下边缘就是锯齿。 */
     static const int adjust_min[] = { -10, -5, 5, 10 };
-    static const char * const adjust_txt[] = { "-10", "-5", "+5", "+10" };
+    static const char * const adjust_txt[] = { "-10'", "-5'", "+5'", "+10'" };
     for (int i = 0; i < 4; i++) {
         lv_obj_t * btn = lv_btn_create(btn_cont);
         ui_style_set_btn_secondary(btn);
@@ -224,9 +239,7 @@ void todolist_view_timer_sync(const todolist_task_t *t, bool running) {
         format_remaining(buf, sizeof(buf), rem_s);
         lv_label_set_text(timer_ctx->countdown, buf);
 
-        uint32_t pct = 0;
-        if (total_s > 0) pct = (elapsed >= total_s) ? 100 : (elapsed * 100 / total_s);
-        lv_bar_set_value(timer_ctx->progress_bar, pct, LV_ANIM_OFF);
+        lv_bar_set_value(timer_ctx->progress_bar, progress_value(elapsed, total_s), LV_ANIM_OFF);
     }
 
     lv_obj_t * lbl = lv_obj_get_child(timer_ctx->start_pause_btn, 0);
@@ -254,14 +267,16 @@ void todolist_view_timer_refresh_progress(const todolist_task_t *t) {
     uint32_t elapsed = todolist_model_timer_elapsed_s(g_todolist_app.model, t);
     uint32_t total_s = t->estimate_s;
 
-    uint32_t v = 0;
-    if (total_s > 0) v = (elapsed >= total_s) ? 100 : (elapsed * 100 / total_s);
-    lv_bar_set_value(timer_ctx->progress_bar, v, LV_ANIM_OFF);
+    uint32_t progress = progress_value(elapsed, total_s);
 
     uint32_t rem_s = (elapsed >= total_s) ? 0 : (total_s - elapsed);
     char buf[16];
     format_remaining(buf, sizeof(buf), rem_s);
-    lv_label_set_text(timer_ctx->countdown, buf);
+    bool text_changed = strcmp(lv_label_get_text(timer_ctx->countdown), buf) != 0;
+    bool bar_changed = lv_bar_get_value(timer_ctx->progress_bar) != (int32_t)progress;
+    if (!text_changed && !bar_changed) return;
+    if (bar_changed) lv_bar_set_value(timer_ctx->progress_bar, progress, LV_ANIM_OFF);
+    if (text_changed) lv_label_set_text(timer_ctx->countdown, buf);
 
     /* 只把这一块推到面板，不整屏刷 */
     epd_region_flush_obj(timer_ctx->zone_countdown);
@@ -273,10 +288,23 @@ void todolist_view_timer_set_running(bool running) {
 
     lv_obj_t * lbl = lv_obj_get_child(timer_ctx->start_pause_btn, 0);
     if (!lbl) return;
-    lv_label_set_text(lbl, running ? "Pause" : "Start");
+    const char *text = running ? "Pause" : "Start";
+    if (strcmp(lv_label_get_text(lbl), text) == 0) return;
+    lv_label_set_text(lbl, text);
 
-    /* 变的只有这个按钮，把窗口切过去即可 —— 下一次倒计时刷新会再切回去 */
-    epd_region_flush_obj(timer_ctx->start_pause_btn);
+    /* The display whitelist is frame-wide, not per object. Include the final
+     * countdown and the button together; the next running tick narrows it
+     * back to the countdown. Paused values produce no further invalidation. */
+    lv_obj_update_layout(timer_ctx->zone_countdown);
+    lv_area_t area, button;
+    lv_obj_get_coords(timer_ctx->zone_countdown, &area);
+    lv_obj_get_coords(timer_ctx->start_pause_btn, &button);
+    area.x1 = LV_MIN(area.x1, button.x1);
+    area.y1 = LV_MIN(area.y1, button.y1);
+    area.x2 = LV_MAX(area.x2, button.x2);
+    area.y2 = LV_MAX(area.y2, button.y2);
+    epd_region_flush_area(&area);
+    lv_obj_invalidate(timer_ctx->start_pause_btn);
 }
 
 void todolist_view_timer_init(TodoListView* v) {

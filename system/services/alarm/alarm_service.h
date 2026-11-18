@@ -105,7 +105,8 @@ bool alarm_service_next(uint8_t *out_idx, uint32_t *out_minutes);
 
 /* ── 倒计时 ─────────────────────────────────────────────────────────── */
 
-/** 设定时长并回到 IDLE。seconds 为 0 时不会启动。 */
+/** 设定时长并回到 IDLE；变化时写入 Flash，重启恢复为待开始状态。
+ * seconds 为 0 时不会启动。剩余时间和运行状态不写入 Flash。 */
 void alarm_service_timer_set(uint32_t seconds);
 
 uint32_t alarm_service_timer_set_seconds(void);

@@ -11,7 +11,7 @@ typedef struct {
     lv_obj_t *connected_row;   /* 当前连接 */
     lv_obj_t *connected_lbl;
     lv_obj_t *connected_icon;
-    lv_obj_t *connection_status;
+    lv_obj_t *scanned_title;   /* 固定的扫描列表标题 */
     lv_obj_t *scanned_cont;    /* 扫描结果列表 */
     lv_obj_t *refresh_btn;     /* Wi-Fi 开启时的扫描悬浮球 */
 } ViewWifiCtx;

@@ -7,8 +7,7 @@
  * 相对 EPOS 的改动：
  *   - EPOS 从 label 文本反解析 SSID（顺着 parent 往上摸三层）。这里改成把
  *     扫描列表的下标存进按钮的 user_data，SSID 带空格也不会出错。
- *   - EPOS 用自定义字体的 MY_SYMBOL_INFO / MY_SYMBOL_DOING，这里统一用
- *     LVGL 内置符号，省一套字体。
+ *   - 信息按钮使用项目的 40x40 图标，连接状态使用 LVGL 内置符号。
  *   - 密码页用项目自己的 setup_custom_keyboard + lv_epd_region 局部刷新，
  *     和 anki / todolist 的表单保持一致（墨水屏上打字不整屏闪）。
  *   - 扫描/连接都是异步的（见 controller_wifi.h），页面上用一行状态文字
@@ -23,7 +22,6 @@
 #include "esp_log.h"
 #include "lv_ui_style_guide.h"
 #include "lv_theme_hardcore.h"
-#include "ui_fonts.h"
 #include "lv_bottom_sheet.h"
 #include "lv_floating_button.h"
 #include "lv_toast.h"
@@ -31,10 +29,14 @@
 #include "settings_app.h"
 #include "settings_model.h"
 #include "settings_view.h"
-#include "modules/controller_wifi.h"
+#include "controller_wifi.h"
 #include "view_wifi.h"
 
 LV_IMAGE_DECLARE(refresh);
+LV_IMAGE_DECLARE(ic_info);
+LV_IMAGE_DECLARE(wifi_1bar);
+LV_IMAGE_DECLARE(wifi_2bar);
+LV_IMAGE_DECLARE(wifi_3bar);
 
 static const char *TAG = "settings_view_wifi";
 
@@ -55,15 +57,12 @@ static const char *rssi_text(int8_t rssi)
     return "Weak";
 }
 
-/* 墨水屏上颜色没用，用格数表示强弱。
- * 用 ui_fonts.h 里的 wifi 图标而不是 ▮▯ —— 后者不在 Montserrat 字库里，
- * 屏上会渲染成方框。用它的 label 必须设 custom_font_normal（它是
- * montserrat 32 的克隆 + 图标字体 fallback 链，ASCII 和图标都能出）。 */
-static const char *rssi_bars(int8_t rssi)
+/* 使用 28x28 图标，以格数表示信号强弱。 */
+static const lv_image_dsc_t *rssi_icon(int8_t rssi)
 {
-    if (rssi > -50) return MY_SYMBOL_WIFI_3_BAR;
-    if (rssi > -65) return MY_SYMBOL_WIFI_2_BAR;
-    return MY_SYMBOL_WIFI_1_BAR;
+    if (rssi > -50) return &wifi_3bar;
+    if (rssi > -65) return &wifi_2bar;
+    return &wifi_1bar;
 }
 
 /* ── 网络详情弹窗 ─────────────────────────────────────────────────── */
@@ -183,7 +182,7 @@ static void on_info_clicked(lv_event_t *e)
  *
  * 但配色没有照搬 —— NomadCast 用 0x4CAF50 / 0x8BC34A / 0x9E9E9E 三档颜色表示
  * 信号强弱，在 1bit 墨水屏上会被抖成一样的灰，完全区分不出来。
- * 这里改成用格子数（▮▮▮ / ▮▮▯ / ▮▯▯）表达强弱，形状在黑白屏上才可读。
+ * 这里改成用 28x28 Wi-Fi 图标的格数表达强弱。
  */
 static void create_network_row(lv_obj_t *parent, const wifi_scan_entry_t *n,
                                uintptr_t tag)
@@ -205,22 +204,22 @@ static void create_network_row(lv_obj_t *parent, const wifi_scan_entry_t *n,
     lv_obj_add_event_cb(row, on_network_clicked, LV_EVENT_SHORT_CLICKED, (void *)tag);
     lv_obj_add_event_cb(row, on_info_clicked, LV_EVENT_LONG_PRESSED, (void *)tag);
 
-    /* 信号：用格子数而不是颜色 */
-    lv_obj_t *sig = lv_label_create(row);
-    lv_label_set_text(sig, rssi_bars(n->rssi));
-    /* 格子字符在 fallback 链里，必须用 custom_font_normal 才画得出来 */
-    lv_obj_set_style_text_font(sig, &custom_font_normal, 0);
+    lv_obj_t *sig = lv_image_create(row);
+    lv_image_set_src(sig, rssi_icon(n->rssi));
 
     lv_obj_t *name = lv_label_create(row);
     lv_label_set_text(name, n->ssid);
     lv_label_set_long_mode(name, LV_LABEL_LONG_MODE_DOTS);
     lv_obj_set_flex_grow(name, 1);
 
-    if (n->secured) {
-        lv_obj_t *lock = lv_label_create(row);
-        lv_label_set_text(lock, "*");
-    }
-
+    lv_obj_t *info_btn = lv_btn_create(row);
+    lv_obj_remove_style_all(info_btn);
+    lv_obj_set_size(info_btn, 40, 40);
+    lv_obj_remove_flag(info_btn, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_EVENT_BUBBLE);
+    lv_obj_t *info_icon = lv_image_create(info_btn);
+    lv_image_set_src(info_icon, &ic_info);
+    lv_obj_center(info_icon);
+    lv_obj_add_event_cb(info_btn, on_info_clicked, LV_EVENT_CLICKED, (void *)tag);
 }
 
 /* ── 三个刷新入口 ─────────────────────────────────────────────────── */
@@ -264,6 +263,7 @@ static void update_visibility(ViewWifiCtx *ctx, settings_model_wifi_t *w)
         lv_obj_remove_flag(ctx->scanned_cont, LV_OBJ_FLAG_HIDDEN);
     } else {
         lv_obj_add_flag(ctx->connected_row, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(ctx->scanned_title, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(ctx->scanned_cont, LV_OBJ_FLAG_HIDDEN);
     }
 }
@@ -277,17 +277,6 @@ void settings_view_wifi_update_visibility(struct SettingsApp *app)
 
 static void update_connected(ViewWifiCtx *ctx, settings_model_wifi_t *w)
 {
-    if (ctx->connection_status) {
-        wifi_info_t live = {0};
-        bool connected = wifi_get_info(&live) == ESP_OK && live.is_connected;
-        if (connected)
-            lv_label_set_text_fmt(ctx->connection_status, "Connected: %s", live.ssid);
-        else if (!w->enabled) lv_label_set_text(ctx->connection_status, "Wi-Fi off");
-        else if (w->state == WIFI_UI_CONNECTING)
-            lv_label_set_text(ctx->connection_status, "Connecting...");
-        else lv_label_set_text(ctx->connection_status, "Wi-Fi disconnected");
-    }
-
     if (!w->enabled || w->state == WIFI_UI_DISCONNECTED) {
         lv_obj_add_flag(ctx->connected_row, LV_OBJ_FLAG_HIDDEN);
         return;
@@ -315,17 +304,11 @@ static void update_scanned_list(ViewWifiCtx *ctx, settings_model_wifi_t *w)
     if (!ctx || !ctx->scanned_cont) return;
 
     lv_obj_clean(ctx->scanned_cont);
+    lv_obj_add_flag(ctx->scanned_title, LV_OBJ_FLAG_HIDDEN);
+    if (!w->enabled) return;
 
-    /* 扫描中不渲染上一次的结果 —— 照 NomadCast 的做法。
-     * 留着旧列表会让人以为扫描已经完成，点下去连的还是过期的 AP。 */
-    if (w->busy) {
-        lv_obj_t *busy = lv_label_create(ctx->scanned_cont);
-        lv_label_set_text(busy, w->busy_text[0] ? w->busy_text : "Scanning...");
-        lv_obj_set_style_pad_top(busy, 20, 0);
-        lv_obj_set_width(busy, LV_PCT(100));
-        lv_obj_set_style_text_align(busy, LV_TEXT_ALIGN_CENTER, 0);
-        return;
-    }
+    /* 扫描/连接提示由 status_lbl 统一显示，忙碌时清空旧扫描结果。 */
+    if (w->busy) return;
 
     /* 先数一遍，标题才能带上数量 */
     uint8_t shown = 0;
@@ -344,11 +327,8 @@ static void update_scanned_list(ViewWifiCtx *ctx, settings_model_wifi_t *w)
         return;
     }
 
-    lv_obj_t *title = lv_label_create(ctx->scanned_cont);
-    lv_label_set_text_fmt(title, "Available Networks (%u)", shown);
-    lv_obj_set_style_text_font(title, LV_FONT_SMALL, 0);
-    lv_obj_set_style_pad_ver(title, 8, 0);
-    lv_obj_set_style_pad_left(title, 12, 0);
+    lv_label_set_text_fmt(ctx->scanned_title, "Available Networks (%u)", shown);
+    lv_obj_remove_flag(ctx->scanned_title, LV_OBJ_FLAG_HIDDEN);
 
     for (uint8_t i = 0; i < w->scanned_count; i++) {
         /* 已经连上的那个不在列表里重复出现 */
@@ -379,17 +359,14 @@ static void connected_info_cb(lv_event_t *e)
     on_info_clicked(e);
 }
 
-static void disconnect_cb(lv_event_t *e)
-{
-    (void)e;
-    settings_controller_wifi_disconnect();
-}
-
 static lv_obj_t *build_wifi_page(struct SettingsApp *app)
 {
     Page page = lv_page_create("Wi-Fi", true,
                                page_navigator_navigate_back, &app->view->page_nav);
     lv_obj_t *cont = page.container;
+    /* Only the network list scrolls; keep the switch and list title fixed. */
+    lv_obj_remove_flag(page.screen, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_remove_flag(cont, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_style_pad_hor(cont, 0, 0);   /* 行自己带 12px，通栏分隔线才到边 */
     lv_obj_set_style_pad_row(cont, 0, 0);
@@ -433,14 +410,7 @@ static lv_obj_t *build_wifi_page(struct SettingsApp *app)
     lv_label_set_text(ctx->status_lbl, "");
     lv_obj_add_flag(ctx->status_lbl, LV_OBJ_FLAG_HIDDEN);
 
-    ctx->connection_status = lv_label_create(cont);
-    lv_obj_set_width(ctx->connection_status, LV_PCT(100));
-    lv_obj_set_style_pad_hor(ctx->connection_status, 12, 0);
-    lv_label_set_text(ctx->connection_status, "Wi-Fi disconnected");
-
-    /* 当前连接。NomadCast 用 0xE8F5E9 的浅绿底把它和普通行区分开，
-     * 1bit 屏上没有这种中间色，改用 2px 描边卡片 —— 和本工程其他地方
-     * "边框 2px = 当前项、1px = 普通项"的约定一致。 */
+    /* 当前连接：无边框，右侧提供网络详情入口。 */
     ctx->connected_row = lv_obj_create(cont);
     lv_obj_remove_style_all(ctx->connected_row);
     lv_obj_set_width(ctx->connected_row, LV_PCT(100));
@@ -450,9 +420,6 @@ static lv_obj_t *build_wifi_page(struct SettingsApp *app)
                           LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_all(ctx->connected_row, 12, 0);
     lv_obj_set_style_pad_column(ctx->connected_row, 10, 0);
-    lv_obj_set_style_radius(ctx->connected_row, 2, 0);
-    lv_obj_set_style_border_width(ctx->connected_row, 2, 0);
-    lv_obj_set_style_border_color(ctx->connected_row, lv_color_black(), 0);
 
     ctx->connected_icon = lv_label_create(ctx->connected_row);
     lv_label_set_text(ctx->connected_icon, LV_SYMBOL_OK);
@@ -463,30 +430,32 @@ static lv_obj_t *build_wifi_page(struct SettingsApp *app)
     lv_label_set_text(ctx->connected_lbl, "");
 
     lv_obj_t *info_btn = lv_btn_create(ctx->connected_row);
-    ui_style_set_btn_secondary(info_btn);
-    lv_obj_set_size(info_btn, 48, 40);
-    lv_obj_set_style_radius(info_btn, 2, 0);
-    lv_obj_center(lv_label_create(info_btn));
-    lv_label_set_text(lv_obj_get_child(info_btn, 0), LV_SYMBOL_LIST);
+    lv_obj_remove_style_all(info_btn);
+    lv_obj_set_size(info_btn, 40, 40);
+    lv_obj_t *info_icon = lv_image_create(info_btn);
+    lv_image_set_src(info_icon, &ic_info);
+    lv_obj_center(info_icon);
     lv_obj_add_event_cb(info_btn, connected_info_cb, LV_EVENT_CLICKED, (void *)0);
-
-    lv_obj_t *dis_btn = lv_btn_create(ctx->connected_row);
-    ui_style_set_btn_secondary(dis_btn);
-    lv_obj_set_size(dis_btn, 48, 40);
-    lv_obj_set_style_radius(dis_btn, 2, 0);
-    lv_obj_center(lv_label_create(dis_btn));
-    lv_label_set_text(lv_obj_get_child(dis_btn, 0), LV_SYMBOL_CLOSE);
-    lv_obj_add_event_cb(dis_btn, disconnect_cb, LV_EVENT_CLICKED, app);
 
     lv_obj_add_flag(ctx->connected_row, LV_OBJ_FLAG_HIDDEN);
 
-    /* 扫描结果 */
+    /* 标题在滚动容器之外，扫描结果单独滚动。 */
+    ctx->scanned_title = lv_label_create(cont);
+    lv_obj_set_width(ctx->scanned_title, LV_PCT(100));
+    lv_obj_set_style_text_font(ctx->scanned_title, LV_FONT_SMALL, 0);
+    lv_obj_set_style_pad_ver(ctx->scanned_title, 8, 0);
+    lv_obj_set_style_pad_left(ctx->scanned_title, 12, 0);
+    lv_label_set_text(ctx->scanned_title, "");
+    lv_obj_add_flag(ctx->scanned_title, LV_OBJ_FLAG_HIDDEN);
+
     ctx->scanned_cont = lv_obj_create(cont);
     lv_obj_remove_style_all(ctx->scanned_cont);
     lv_obj_set_width(ctx->scanned_cont, LV_PCT(100));
+    lv_obj_set_height(ctx->scanned_cont, 0);
     lv_obj_set_flex_grow(ctx->scanned_cont, 1);
     lv_obj_set_flex_flow(ctx->scanned_cont, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_scroll_dir(ctx->scanned_cont, LV_DIR_VER);
+    lv_obj_remove_flag(ctx->scanned_cont, LV_OBJ_FLAG_SCROLL_CHAIN_VER);
     lv_obj_set_scrollbar_mode(ctx->scanned_cont, LV_SCROLLBAR_MODE_OFF);
     lv_obj_set_style_pad_bottom(ctx->scanned_cont,
                                 LV_FLOATING_BUTTON_SIZE + LV_FLOATING_BUTTON_MARGIN, 0);

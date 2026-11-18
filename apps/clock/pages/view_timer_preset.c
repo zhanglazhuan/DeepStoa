@@ -2,8 +2,8 @@
  * view_timer_preset.c  --  时长设置页
  *
  * 两件事：
- *   1. 任意时长 —— 输入分钟数直接开始，不用先改快捷键；
- *   2. 改 4 个快捷时长 —— 改完保存，回到 Timer 页 chip 上就是新值。
+ *   1. 修改当前时长；
+ *   2. 修改 4 个快捷时长。返回时自动保存有效输入。
  *
  * Timer 主页只留 chip，就是把"调时长"这件低频操作挪到这里一次输入完成，
  * 而不是在主页放 ±1 按钮让用户点二十下（每一下都是一次墨水屏刷新）。
@@ -15,7 +15,6 @@
 
 #include <lvgl.h>
 #include "esp_system.h"
-#include "lv_ui_style_guide.h"
 
 #include "lv_keyboard.h"
 #include "lv_page.h"
@@ -35,6 +34,11 @@ static void page_deleted_cb(lv_event_t *e)
 {
     (void)e;
     epos_keyboard_set_scroller(NULL);
+}
+
+static void back_cb(lv_event_t *e)
+{
+    clock_controller_back(lv_event_get_user_data(e));
 }
 
 /* ── 一个分钟数输入框 ───────────────────────────────────────── */
@@ -89,8 +93,7 @@ static lv_obj_t *build_timer_preset_page(ClockApp *app, void *user_data)
     TimerPresetEditCtx *ctx = &app->view->timer_preset_ctx;
 
     Page page = lv_page_create("Timer Duration", true,
-                               page_navigator_navigate_back,
-                               &app->view->page_nav);
+                               back_cb, app);
 
     lv_obj_clear_flag(page.screen, LV_OBJ_FLAG_SCROLLABLE);
     if (page.container) lv_obj_clear_flag(page.container, LV_OBJ_FLAG_SCROLLABLE);
@@ -114,7 +117,7 @@ static lv_obj_t *build_timer_preset_page(ClockApp *app, void *user_data)
     epos_keyboard_set_scroller(col);
     lv_obj_add_event_cb(page.screen, page_deleted_cb, LV_EVENT_DELETE, NULL);
 
-    /* ── 1. 任意时长，用完就走 ── */
+    /* ── 1. 当前时长，返回时保存 ── */
     lv_obj_t *hdr1 = lv_label_create(col);
     lv_label_set_text(hdr1, "Custom duration (minutes)");
     lv_obj_set_style_text_font(hdr1, LV_FONT_TINY, 0);
@@ -123,17 +126,8 @@ static lv_obj_t *build_timer_preset_page(ClockApp *app, void *user_data)
     lv_obj_set_style_pad_bottom(hdr1, 8, 0);
 
     lv_obj_t *custom_row = make_row(col, "Minutes");
-    ctx->ta_custom = make_minute_input(custom_row, kb,
-                                       (unsigned)(alarm_service_timer_set_seconds() / 60u));
-
-    lv_obj_t *use_btn = lv_btn_create(col);
-    ui_style_set_btn_primary(use_btn);
-    lv_obj_set_size(use_btn, LV_PCT(100), 56);
-    lv_obj_add_event_cb(use_btn, clock_controller_on_timer_custom_use, LV_EVENT_CLICKED, app);
-    lv_obj_t *use_lbl = lv_label_create(use_btn);
-    lv_obj_set_style_text_font(use_lbl, LV_FONT_SMALL, 0);
-    lv_label_set_text(use_lbl, "Use this duration");
-    lv_obj_center(use_lbl);
+    ctx->initial_custom_minutes = (unsigned)(alarm_service_timer_set_seconds() / 60u);
+    ctx->ta_custom = make_minute_input(custom_row, kb, ctx->initial_custom_minutes);
 
     /* 分隔：1px 纯黑，1bpp 上任何中间灰都会被阈值判成白色 */
     lv_obj_t *hr = lv_obj_create(col);
@@ -158,17 +152,6 @@ static lv_obj_t *build_timer_preset_page(ClockApp *app, void *user_data)
         ctx->ta_presets[i] = make_minute_input(row, kb, alarm_service_preset((uint8_t)i));
     }
 
-    lv_obj_t *save_btn = lv_btn_create(col);
-    ui_style_set_btn_secondary(save_btn);
-    lv_obj_set_size(save_btn, LV_PCT(100), 56);
-    lv_obj_set_style_margin_top(save_btn, 8, 0);
-    lv_obj_add_event_cb(save_btn, clock_controller_on_timer_preset_save, LV_EVENT_CLICKED, app);
-    lv_obj_t *save_lbl = lv_label_create(save_btn);
-    lv_obj_set_style_text_font(save_lbl, LV_FONT_SMALL, 0);
-    lv_label_set_text(save_lbl, "Save shortcuts");
-    lv_obj_center(save_lbl);
-
-    ctx->btn_save = save_btn;
     return page.screen;
 }
 

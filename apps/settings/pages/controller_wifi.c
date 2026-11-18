@@ -10,7 +10,7 @@
 #include "settings_app.h"
 #include "settings_model.h"
 #include "settings_view.h"
-#include "pages/view_wifi.h"
+#include "view_wifi.h"
 #include "controller_wifi.h"
 #include "wifi_manager.h"
 #include "wifi_store.h"

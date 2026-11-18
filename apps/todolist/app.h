@@ -3,6 +3,10 @@
 
 #include <lvgl.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 // 前向声明
 struct TodoListView;
 struct TodoListModel;
@@ -15,5 +19,12 @@ typedef struct TodoListApp {
 } TodoListApp;
 
 extern TodoListApp g_todolist_app;
+
+/* Register TodoList with the application manager. */
+void todolist_init(void);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // TODOLIST_APP_H

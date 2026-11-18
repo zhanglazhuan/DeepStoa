@@ -5,7 +5,6 @@ idf_component_register(
         "settings_model.c"
         "settings_controller.c"
         "settings_view.c"
-        "widgets/passcode_input.c"
         "pages/view_wifi_password.c"
         "pages/view_update_download.c"
         "pages/view_verify_passcode.c"
@@ -22,8 +21,8 @@ idf_component_register(
         "pages/view_security.c"
         "pages/view_update.c"
         "pages/view_wifi.c"
-        "modules/controller_wifi.c"
-    INCLUDE_DIRS "." "pages" "modules"
+        "pages/controller_wifi.c"
+    INCLUDE_DIRS "." "pages"
     REQUIRES driver lvgl
     PRIV_REQUIRES appmgr uilv controller ota wifi time battery
 )

@@ -247,46 +247,44 @@ void clock_controller_on_timer_preset_edit_open(lv_event_t *e)
 {
     ClockApp *app = lv_event_get_user_data(e);
     app->model->active_tab = 1;   /* 返回时停在 Timer 页 */
+    clock_controller_timer_ui_detach(app);
+    clock_view_timer_leave(app);
     PAGE_NAVIGATE_TO(app, PAGE_TIMER_PRESET_EDIT, NULL);
 }
 
-/** 任意时长：输入分钟数直接用，不改快捷键。 */
-void clock_controller_on_timer_custom_use(lv_event_t *e)
+static void save_timer_duration(ClockApp *app)
 {
-    ClockApp *app = lv_event_get_user_data(e);
     TimerPresetEditCtx *ctx = &app->view->timer_preset_ctx;
-    if (!ctx->ta_custom) return;
-
-    int mins = atoi(lv_textarea_get_text(ctx->ta_custom));
-    if (mins <= 0 || mins > 999) {
-        ESP_LOGW(TAG, "custom duration %d out of range, ignored", mins);
-        return;
-    }
-
-    alarm_service_timer_set((uint32_t)mins * 60u);
-    app->model->active_tab = 1;
-    page_navigator_navigate_pop(&app->view->page_nav, app);
-
-    clock_view_timer_refresh_chips(app);
-    clock_view_refresh_timer(app);
-}
-
-void clock_controller_on_timer_preset_save(lv_event_t *e)
-{
-    ClockApp *app = lv_event_get_user_data(e);
-    TimerPresetEditCtx *ctx = &app->view->timer_preset_ctx;
-
-    uint16_t mins[ALARM_PRESET_COUNT] = {0};
-    for (int i = 0; i < ALARM_PRESET_COUNT; i++) {
-        if (ctx->ta_presets[i]) {
-            mins[i] = (uint16_t)atoi(lv_textarea_get_text(ctx->ta_presets[i]));
+    if (ctx->ta_custom) {
+        int mins = atoi(lv_textarea_get_text(ctx->ta_custom));
+        /* Merely opening the editor or changing shortcuts must not reset a
+         * running/paused timer. Apply only a valid, changed custom duration. */
+        if (mins > 0 && mins <= 999 && (unsigned)mins != ctx->initial_custom_minutes) {
+            alarm_service_timer_set((uint32_t)mins * 60u);
         }
     }
-    alarm_service_set_presets(mins);   /* 服务里会夹紧非法值 */
-
+    uint16_t mins[ALARM_PRESET_COUNT] = {0};
+    bool changed = false;
+    for (int i = 0; i < ALARM_PRESET_COUNT; i++) {
+        mins[i] = alarm_service_preset((uint8_t)i);
+        if (ctx->ta_presets[i]) {
+            int value = atoi(lv_textarea_get_text(ctx->ta_presets[i]));
+            if (value > 0 && value <= 999 && value != mins[i]) {
+                mins[i] = (uint16_t)value;
+                changed = true;
+            }
+        }
+    }
+    if (changed) alarm_service_set_presets(mins);
     app->model->active_tab = 1;
-    page_navigator_navigate_pop(&app->view->page_nav, app);
-    clock_view_timer_refresh_chips(app);
+}
+
+bool clock_controller_back(ClockApp *app)
+{
+    if (app->view->page_nav.current_page == PAGE_TIMER_PRESET_EDIT) {
+        save_timer_duration(app);
+    }
+    return page_navigator_navigate_pop(&app->view->page_nav, app);
 }
 
 void clock_controller_on_tab_changed(lv_tab_t *tab, uint32_t idx, void *user_data)

@@ -52,7 +52,7 @@ static void clock_app_stop(void)
 
 static bool clock_app_back(void)
 {
-    return page_navigator_navigate_pop(&g_clock_app.view->page_nav, &g_clock_app);
+    return clock_controller_back(&g_clock_app);
 }
 
 static application_t clock_app = {

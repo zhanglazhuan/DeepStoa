@@ -2,18 +2,17 @@
 
 #include "lv_tab.h"
 #include "lv_epd_region.h"
-#include "../modules/controller_timer.h"
+#include "controller_timer.h"
 #include "view_home.h"
 #include "view_settings.h"
 #include "view_about.h"            // 引入 About 页面
-#include "controller_settings.h"   // 引入 Clear Done 逻辑
 
 #include "../view.h"
 #include "../controller.h"
 #include "../app.h"
-#include "../modules/view_todo.h"
-#include "../modules/view_timer.h"
-#include "../modules/view_done.h"
+#include "view_todo.h"
+#include "view_timer.h"
+#include "view_done.h"
 
 static const char *TAG = "todolist_view_home";
 

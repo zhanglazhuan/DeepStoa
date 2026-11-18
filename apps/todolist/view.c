@@ -10,7 +10,7 @@
 #include "controller.h"
 #include "app.h"
 
-#include "./modules/view_timer.h"
+#include "pages/view_timer.h"
 #include "./pages/view_task_form.h"
 #include "./pages/view_settings.h"
 #include "./pages/view_home.h"

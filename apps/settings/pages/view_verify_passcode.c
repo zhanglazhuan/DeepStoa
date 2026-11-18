@@ -10,7 +10,7 @@
 #include "settings_app.h"
 #include "settings_model.h"
 #include "settings_view.h"
-#include "../widgets/passcode_input.h"
+#include "view_create_passcode.h"
 #include "view_verify_passcode.h"
 
 typedef struct {

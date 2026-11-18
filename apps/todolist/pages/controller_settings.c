@@ -1,3 +1,4 @@
+/* TodoList settings event handlers and deferred configuration persistence. */
 #include <stdint.h>
 #include <stdlib.h>
 #include "esp_log.h"

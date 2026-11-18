@@ -1,6 +1,8 @@
 #ifndef TODOLIST_CONTROLLER_SETTINGS_H
 #define TODOLIST_CONTROLLER_SETTINGS_H
 
+/* Settings controller callbacks and configuration persistence. */
+
 #include "lvgl.h"
 #include "../controller.h"
 

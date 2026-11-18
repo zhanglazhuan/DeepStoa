@@ -75,6 +75,8 @@ static lv_obj_t *build_home_page(struct SettingsApp *app) {
 
     lv_obj_t *b6 = lv_list_add_button(list, &ic_admin_panel_settings, "Security");
     lv_obj_add_event_cb(b6, on_click_security, LV_EVENT_CLICKED, app);
+    /* Temporarily hide the Security entry from Settings. */
+    lv_obj_add_flag(b6, LV_OBJ_FLAG_HIDDEN);
 
     lv_obj_t *b7 = lv_list_add_button(list, &ic_update, "Update");
     lv_obj_add_event_cb(b7, on_click_updates, LV_EVENT_CLICKED, app);
