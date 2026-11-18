@@ -57,65 +57,91 @@ static void fill_border(uint8_t *buf)
 
 // ─── Main test sequence ────────────────────────────────────────────────
 
+// Check each operation before printing PASS or starting the next pattern.
+#define CHECK_PANEL() do { if (epd_get_error() != ESP_OK) goto panel_failed; } while (0)
+
 void app_main(void)
 {
+    uint8_t *buf = NULL;
     ESP_LOGI(TAG, "=== t_display: E-ink Display Test (HW SPI) ===");
 
     // Step 1: Configure GPIO and SPI
     ESP_LOGI(TAG, "Step 1: Init GPIO and hardware SPI...");
-    epd_gpio_config();
+    esp_err_t ret = epd_gpio_config();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "FAIL: Display transport init: %s. Test stopped; "
+                 "no display commands sent. Reset after checking I2C wiring.",
+                 esp_err_to_name(ret));
+        return;
+    }
 
     ESP_LOGI(TAG, "PASS: GPIO and SPI initialized");
 
     // Step 2: Init display (full update mode)
     ESP_LOGI(TAG, "Step 2: Init display...");
     EPD_HW_Init();
+    CHECK_PANEL();
     ESP_LOGI(TAG, "PASS: Display initialized");
 
     // Step 3: White screen
     ESP_LOGI(TAG, "Step 3: White screen...");
     EPD_WhiteScreen_White();
+    CHECK_PANEL();
     ESP_LOGI(TAG, "PASS: White screen done");
     vTaskDelay(pdMS_TO_TICKS(2000));
 
     // Step 4: Black screen
     ESP_LOGI(TAG, "Step 4: Black screen...");
     EPD_HW_Init();  // re-init after prior update mode
+    CHECK_PANEL();
     EPD_WhiteScreen_Black();
+    CHECK_PANEL();
     ESP_LOGI(TAG, "PASS: Black screen done");
     vTaskDelay(pdMS_TO_TICKS(2000));
 
     // Step 5: Fast update with checkerboard
     ESP_LOGI(TAG, "Step 5: Fast update - checkerboard...");
-    uint8_t *buf = (uint8_t *)malloc(EPD_ARRAY);
+    buf = (uint8_t *)malloc(EPD_ARRAY);
     if (buf == NULL) {
         ESP_LOGE(TAG, "FAIL: malloc(%d) failed", EPD_ARRAY);
         return;
     }
     EPD_HW_Init_Fast();
+    CHECK_PANEL();
     fill_checkerboard(buf);
     EPD_WhiteScreen_ALL_Fast(buf);
+    CHECK_PANEL();
     ESP_LOGI(TAG, "PASS: Fast checkerboard done");
     vTaskDelay(pdMS_TO_TICKS(2000));
 
     // Step 6: Full update with border rectangle
     ESP_LOGI(TAG, "Step 6: Full update - border rectangle...");
     EPD_HW_Init();
+    CHECK_PANEL();
     fill_border(buf);
     EPD_WhiteScreen_ALL(buf);
+    CHECK_PANEL();
     ESP_LOGI(TAG, "PASS: Border rectangle done");
     vTaskDelay(pdMS_TO_TICKS(2000));
 
     free(buf);
+    buf = NULL;
 
     // Step 7: Deep sleep
     ESP_LOGI(TAG, "Step 7: Deep sleep...");
     EPD_DeepSleep();
+    CHECK_PANEL();
     ESP_LOGI(TAG, "PASS: Display entered deep sleep");
 
     ESP_LOGI(TAG, "=== TEST COMPLETE: All steps passed ===");
 
-    while (1) {
-        vTaskDelay(pdMS_TO_TICKS(1000));
-    }
+    return;
+
+panel_failed:
+    free(buf);
+    aw9523_set_pin(DEEPV1_AW_PIN_EPD_RESET, 0);
+    aw9523_set_pin(DEEPV1_AW_PIN_EPD_POWER, 0);
+    ESP_LOGE(TAG, "FAIL: Panel operation: %s. Check panel connection, power and BUSY. "
+             "Test stopped; panel held in reset and powered off.",
+             esp_err_to_name(epd_get_error()));
 }

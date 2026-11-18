@@ -100,6 +100,17 @@ esp_err_t aw9523_init(uint8_t i2c_port, gpio_num_t sda_pin, gpio_num_t scl_pin,
         ESP_LOGI(TAG, "HW reset done (GPIO%d)", rst_pin);
     }
 
+    // Sample idle levels before issuing START. A low line points to a stuck
+    // shared bus; changing the slave address cannot fix that condition.
+    int sda_idle = gpio_get_level(sda_pin);
+    int scl_idle = gpio_get_level(scl_pin);
+    ESP_LOGI(TAG, "I2C idle: SDA(GPIO%d)=%d, SCL(GPIO%d)=%d (expected 1/1)",
+             sda_pin, sda_idle, scl_pin, scl_idle);
+    if (!sda_idle || !scl_idle) {
+        ESP_LOGE(TAG, "Bus held low before probe. Check U8 VCC/GND/RSTN, "
+                 "R36 SDA and R35 SCL pull-ups to 3V3, and other shared-bus devices.");
+    }
+
     // i2c_master_probe() takes milliseconds, not FreeRTOS ticks.
     ESP_LOGI(TAG, "Probing AW9523 at 0x%02X (port %d, SDA=GPIO%d, SCL=GPIO%d)...",
              i2c_addr, i2c_port, sda_pin, scl_pin);
@@ -107,6 +118,13 @@ esp_err_t aw9523_init(uint8_t i2c_port, gpio_num_t sda_pin, gpio_num_t scl_pin,
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "AW9523 probe failed at 0x%02X: %s",
                  i2c_addr, esp_err_to_name(ret));
+        ESP_LOGE(TAG, "I2C after failure: SDA=%d, SCL=%d",
+                 gpio_get_level(sda_pin), gpio_get_level(scl_pin));
+        if (ret == ESP_ERR_TIMEOUT) {
+            ESP_LOGE(TAG, "Probe already uses 100 kHz. Measure U8 pins "
+                     "21(VCC), 23(RSTN), 20(SDA), 19(SCL); "
+                     "inspect touch/audio branches for a line held low.");
+        }
         return ret;
     }
     ESP_LOGI(TAG, "Device found at 0x%02X (7-bit)", i2c_addr);
@@ -206,6 +224,13 @@ void aw9523_write_port(uint8_t port, uint8_t value)
     if (aw9523_write_reg(AW9523_REG_OUTPUT_P0 + port, value) == ESP_OK)
         g_out_cache[port] = value;
     xSemaphoreGive(g_output_lock);
+}
+
+esp_err_t aw9523_read_port_checked(uint8_t port, uint8_t *data)
+{
+    if (port > 1 || data == NULL) return ESP_ERR_INVALID_ARG;
+    if (g_i2c_dev == NULL) return ESP_ERR_INVALID_STATE;
+    return aw9523_read_reg(AW9523_REG_INPUT_P0 + port, data);
 }
 
 uint8_t aw9523_read_port(uint8_t port)

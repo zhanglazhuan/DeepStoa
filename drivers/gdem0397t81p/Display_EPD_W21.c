@@ -219,6 +219,20 @@ static void epd_write_data_fill(uint8_t value, uint32_t len)
 
 void epd_gpio_config(void)
 {
+    // V1.1 codecs share I2C with AW9523: enable their supply before probing.
+    gpio_config_t power_conf = {
+        .pin_bit_mask = 1ULL << DEEPV1_PIN_EN_POWER,
+        .mode = GPIO_MODE_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    ESP_ERROR_CHECK(gpio_config(&power_conf));
+    ESP_ERROR_CHECK(gpio_set_level(DEEPV1_PIN_EN_POWER, 1));
+    delay_xms(20);
+    ESP_LOGI(TAG, "EN_Power GPIO%d HIGH before shared I2C initialization",
+             DEEPV1_PIN_EN_POWER);
+
     if (!aw9523_get_i2c_bus()) ESP_ERROR_CHECK(aw9523_init(DEEPV1_I2C_PORT,
                                 DEEPV1_PIN_I2C_SDA,
                                 DEEPV1_PIN_I2C_SCL,

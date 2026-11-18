@@ -8,6 +8,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include "esp_err.h"
 
 typedef uint8_t UBYTE;
 
@@ -16,8 +17,10 @@ typedef uint8_t UBYTE;
 #define EPD_ARRAY   (EPD_WIDTH * EPD_HEIGHT / 8)
 
 // GPIO and SPI setup
-void epd_gpio_config(void);
+esp_err_t epd_gpio_config(void);
 bool epd_is_busy(void);
+// First panel error, cleared by epd_gpio_config().
+esp_err_t epd_get_error(void);
 
 // Full screen update display
 void EPD_HW_Init(void);

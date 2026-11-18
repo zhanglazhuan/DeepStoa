@@ -1,5 +1,5 @@
-// DeepStoa V1 pre-production board definitions.
-// Source: design/墨水屏-原理图V1.0.pdf.
+// DeepStoa V1.1 board definitions (legacy DEEPV1 names retained).
+// Source: design/DeepStoa_V1.1.pdf, sheets 1-7.
 
 #ifndef DEEPSTOA_V1_H
 #define DEEPSTOA_V1_H
@@ -39,43 +39,43 @@
 
 /* Shared I2C bus: AW9523, touch controller and audio codecs. */
 #define DEEPV1_I2C_PORT          0U
-#define DEEPV1_PIN_I2C_SDA       GPIO_NUM_17
-#define DEEPV1_PIN_I2C_SCL       GPIO_NUM_18
+#define DEEPV1_PIN_I2C_SDA       GPIO_NUM_13
+#define DEEPV1_PIN_I2C_SCL       GPIO_NUM_14
 
 /* AW9523BTQR: AD1 = 0, AD0 = 0. */
 #define DEEPV1_AW9523_ADDR       0x58U
-#define DEEPV1_PIN_IO_RESET      GPIO_NUM_13
-#define DEEPV1_PIN_IO_INT        GPIO_NUM_14
+#define DEEPV1_PIN_IO_RESET      GPIO_NUM_11
+#define DEEPV1_PIN_IO_INT        GPIO_NUM_12
 
 /* AW9523 outputs and inputs, named after the schematic nets. */
-#define DEEPV1_AW_PIN_EN_POWER   AW9523_PIN_P0_0
-/* J4 headphone socket sense, INPUT despite the AMP_EN net name. */
-#define DEEPV1_AW_PIN_AMP_EN     AW9523_PIN_P0_1
-#define DEEPV1_AW_PIN_EN_MOTOR   AW9523_PIN_P1_0
-#define DEEPV1_AW_PIN_AP_EN      AW9523_PIN_P1_1
-#define DEEPV1_AW_PIN_USB_DETECT AW9523_PIN_P1_2
-#define DEEPV1_AW_PIN_CHARGE     AW9523_PIN_P1_3
-#define DEEPV1_AW_PIN_TP_RESET   AW9523_PIN_P1_4
+/* EN_Power now drives the audio LDO directly from the MCU. */
+#define DEEPV1_PIN_EN_POWER      GPIO_NUM_17
+/* All P0 pins are unconnected; V1.1 has no headphone detect input. */
+#define DEEPV1_AW_PIN_EN_MOTOR   AW9523_PIN_P1_7
+#define DEEPV1_AW_PIN_AP_EN      AW9523_PIN_P1_6
+#define DEEPV1_AW_PIN_USB_DETECT AW9523_PIN_P1_0
+#define DEEPV1_AW_PIN_CHARGE     AW9523_PIN_P1_1
+#define DEEPV1_AW_PIN_TP_RESET   AW9523_PIN_P1_3
 #define DEEPV1_AW_PIN_LCD_DC     AW9523_PIN_P1_5
-#define DEEPV1_AW_PIN_LCD_RESET  AW9523_PIN_P1_6
-#define DEEPV1_AW_PIN_LCD_POWER  AW9523_PIN_P1_7
+#define DEEPV1_AW_PIN_LCD_RESET  AW9523_PIN_P1_4
+#define DEEPV1_AW_PIN_LCD_POWER  AW9523_PIN_P1_2
 
 /* AW9523 direction registers use 1 for input and 0 for output. */
-#define DEEPV1_AW_P0_INPUT_MASK  0xFEU
-#define DEEPV1_AW_P0_OUTPUT_MASK 0x01U
-#define DEEPV1_AW_P1_INPUT_MASK  0x0CU
-#define DEEPV1_AW_P1_OUTPUT_MASK 0xF3U
+#define DEEPV1_AW_P0_INPUT_MASK  0xFFU
+#define DEEPV1_AW_P0_OUTPUT_MASK 0x00U
+#define DEEPV1_AW_P1_INPUT_MASK  0x03U
+#define DEEPV1_AW_P1_OUTPUT_MASK 0xFCU
 
-/* Keep every controlled peripheral disabled or held in reset at startup. */
+/* Keep AW-controlled peripherals disabled or held in reset at startup. */
 #define DEEPV1_AW_P0_SAFE_OUTPUT 0x00U
 #define DEEPV1_AW_P1_SAFE_OUTPUT 0x00U
 
 /* E-paper display: SPI signals are direct GPIOs; control is split. */
 #define DEEPV1_EPD_SPI_HOST      SPI2_HOST
-#define DEEPV1_PIN_LCD_SDI       GPIO_NUM_10
-#define DEEPV1_PIN_LCD_SCLK      GPIO_NUM_11
-#define DEEPV1_PIN_LCD_CS        GPIO_NUM_12
-#define DEEPV1_PIN_LCD_BUSY      GPIO_NUM_21
+#define DEEPV1_PIN_LCD_SDI       GPIO_NUM_21
+#define DEEPV1_PIN_LCD_SCLK      GPIO_NUM_38
+#define DEEPV1_PIN_LCD_CS        GPIO_NUM_39
+#define DEEPV1_PIN_LCD_BUSY      GPIO_NUM_40
 
 #define DEEPV1_PIN_EPD_MOSI      DEEPV1_PIN_LCD_SDI
 #define DEEPV1_PIN_EPD_SCK       DEEPV1_PIN_LCD_SCLK
@@ -90,21 +90,21 @@
 #define DEEPV1_TOUCH_I2C_ADDR    0x38U
 #define DEEPV1_PIN_TOUCH_SDA     DEEPV1_PIN_I2C_SDA
 #define DEEPV1_PIN_TOUCH_SCL     DEEPV1_PIN_I2C_SCL
-#define DEEPV1_PIN_TOUCH_INT     GPIO_NUM_9
+#define DEEPV1_PIN_TOUCH_INT     GPIO_NUM_18
 #define DEEPV1_AW_PIN_TOUCH_RST  DEEPV1_AW_PIN_TP_RESET
 
 /* Audio data and clock nets. */
 #define DEEPV1_I2S_PORT          0U
-#define DEEPV1_PIN_I2S_DIN       GPIO_NUM_1
-#define DEEPV1_PIN_ES7210_INT    GPIO_NUM_2
-#define DEEPV1_PIN_I2S_DOUT1     GPIO_NUM_5
-#define DEEPV1_PIN_I2S_LRCLK     GPIO_NUM_6
-#define DEEPV1_PIN_I2S_BCLK      GPIO_NUM_7
-#define DEEPV1_PIN_I2S_MCLK      GPIO_NUM_8
+#define DEEPV1_PIN_I2S_DIN       GPIO_NUM_41
+#define DEEPV1_PIN_ES7210_INT    GPIO_NUM_45
+#define DEEPV1_PIN_I2S_DOUT1     GPIO_NUM_46
+#define DEEPV1_PIN_I2S_LRCLK     GPIO_NUM_42
+#define DEEPV1_PIN_I2S_BCLK      GPIO_NUM_43
+#define DEEPV1_PIN_I2S_MCLK      GPIO_NUM_44
 
 /* Net names describe the codec side, not the ESP32 I2S direction.
- * U12 ES8311 DSDIN pin 9 / TP18 receives playback on GPIO1.
- * U15 ES7210 SDOUT1 pin 11 / TP25 supplies capture on GPIO5. */
+ * U12 ES8311 DSDIN pin 9 / TP18 receives playback on GPIO41.
+ * U15 ES7210 SDOUT1 pin 11 / TP25 supplies capture on GPIO46. */
 #define DEEPV1_PIN_I2S_TX        DEEPV1_PIN_I2S_DIN
 #define DEEPV1_PIN_I2S_RX        DEEPV1_PIN_I2S_DOUT1
 
@@ -112,25 +112,25 @@
 #define DEEPV1_PIN_USB_DN        GPIO_NUM_19
 #define DEEPV1_PIN_USB_DP        GPIO_NUM_20
 
-/* Four-bit SDMMC interface. */
-#define DEEPV1_PIN_SD_DETECT     GPIO_NUM_40
-#define DEEPV1_PIN_SD_DAT1       GPIO_NUM_41
-#define DEEPV1_PIN_SD_DAT0       GPIO_NUM_42
-#define DEEPV1_PIN_SD_CLK        GPIO_NUM_43
-#define DEEPV1_PIN_SD_CMD        GPIO_NUM_44
-#define DEEPV1_PIN_SD_DAT3       GPIO_NUM_45
-#define DEEPV1_PIN_SD_DAT2       GPIO_NUM_46
+/* Four-bit SDMMC interface; J6 has no separate card-detect signal. */
+#define DEEPV1_PIN_SD_DAT1       GPIO_NUM_1
+#define DEEPV1_PIN_SD_DAT0       GPIO_NUM_2
+#define DEEPV1_PIN_SD_CLK        GPIO_NUM_3
+#define DEEPV1_PIN_SD_CMD        GPIO_NUM_4
+#define DEEPV1_PIN_SD_DAT3       GPIO_NUM_5
+#define DEEPV1_PIN_SD_DAT2       GPIO_NUM_6
 
-/* Keys are pulled down and become high when pressed. */
+/* Keys are on external J4; active-high convention retained.
+ * GPIO47/48 are in the 1.8 V domain on ESP32-S3R16V (schematic sheet 4). */
 #define DEEPV1_BUTTON_ACTIVE_LEVEL 1U
-#define DEEPV1_PIN_BUTTON_VOL_UP   GPIO_NUM_38
-#define DEEPV1_PIN_BUTTON_POWER    GPIO_NUM_39
-#define DEEPV1_PIN_BUTTON_VOL_DOWN GPIO_NUM_47
+#define DEEPV1_PIN_BUTTON_VOL_UP   GPIO_NUM_9
+#define DEEPV1_PIN_BUTTON_POWER    GPIO_NUM_47
+#define DEEPV1_PIN_BUTTON_VOL_DOWN GPIO_NUM_10
 #define DEEPV1_PIN_BUTTON_RECORD   GPIO_NUM_48
-#define DEEPV1_PIN_WAKEUP_MCU      GPIO_NUM_4
+#define DEEPV1_PIN_WAKEUP_MCU      GPIO_NUM_8
 #define DEEPV1_PIN_BOOT            GPIO_NUM_0
 
 /* Battery divider output (BAT_M) for ADC sampling. */
-#define DEEPV1_PIN_BATTERY_SENSE GPIO_NUM_3
+#define DEEPV1_PIN_BATTERY_SENSE GPIO_NUM_7
 
 #endif // DEEPSTOA_V1_H
