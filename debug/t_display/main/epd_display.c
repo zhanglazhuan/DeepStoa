@@ -47,6 +47,13 @@ static const char *TAG = "epd_hwspi";
 // ─── SPI device handle ─────────────────────────────────────────────────
 static spi_device_handle_t spi_dev;
 static int s_dc_level = -1;
+// Latch the first panel failure until the next transport initialization.
+static esp_err_t s_panel_error = ESP_OK;
+
+esp_err_t epd_get_error(void)
+{
+    return s_panel_error;
+}
 
 // ─── GPIO / Delay helpers ──────────────────────────────────────────────
 
@@ -64,7 +71,7 @@ static void spi_write_byte(uint8_t data)
         .tx_data = {data},              // USE_TXDATA reads from inline tx_data[4], NOT tx_buffer
         .flags = SPI_TRANS_USE_TXDATA,
     };
-    spi_device_transmit(spi_dev, &t);
+    ESP_ERROR_CHECK(spi_device_transmit(spi_dev, &t));
 }
 
 static void spi_write_bytes(const uint8_t *data, uint32_t len)
@@ -84,7 +91,7 @@ static void spi_write_bytes(const uint8_t *data, uint32_t len)
             .length = chunk * 8,
             .tx_buffer = data + offset,
         };
-        spi_device_transmit(spi_dev, &t);
+        ESP_ERROR_CHECK(spi_device_transmit(spi_dev, &t));
         offset += chunk;
     }
 }
@@ -101,6 +108,7 @@ static void epd_set_dc(int level)
 
 static void epd_write_cmd(uint8_t cmd)
 {
+    if (s_panel_error != ESP_OK) return;
     epd_set_dc(0);                    // DC=0: command
     gpio_set_level(EPD_PIN_CS, 0);   // CS=0: assert
     spi_write_byte(cmd);
@@ -109,6 +117,7 @@ static void epd_write_cmd(uint8_t cmd)
 
 static void epd_write_data(uint8_t data)
 {
+    if (s_panel_error != ESP_OK) return;
     epd_set_dc(1);                    // DC=1: data
     gpio_set_level(EPD_PIN_CS, 0);   // CS=0: assert
     spi_write_byte(data);
@@ -117,6 +126,7 @@ static void epd_write_data(uint8_t data)
 
 static void epd_write_data_pkg(const uint8_t *data, uint32_t len)
 {
+    if (s_panel_error != ESP_OK) return;
     epd_set_dc(1);                    // DC=1: data
     gpio_set_level(EPD_PIN_CS, 0);   // CS=0: assert
     spi_write_bytes(data, len);
@@ -125,13 +135,36 @@ static void epd_write_data_pkg(const uint8_t *data, uint32_t len)
 
 // ─── GPIO Configuration ────────────────────────────────────────────────
 
-void epd_gpio_config(void)
+esp_err_t epd_gpio_config(void)
 {
-    ESP_ERROR_CHECK(aw9523_init(DEEPV1_I2C_PORT,
+    s_panel_error = ESP_OK;
+    // V1.1 audio codecs share the I2C bus. Enable their supply first
+    // so unpowered codecs do not hold SDA/SCL low.
+    gpio_config_t power_conf = {
+        .pin_bit_mask = 1ULL << DEEPV1_PIN_EN_POWER,
+        .mode = GPIO_MODE_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    esp_err_t ret = gpio_config(&power_conf);
+    if (ret == ESP_OK) ret = gpio_set_level(DEEPV1_PIN_EN_POWER, 1);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Audio power enable failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
+    delay_xms(20);
+    ESP_LOGI(TAG, "EN_Power GPIO%d HIGH; audio supply enabled before I2C probe",
+             DEEPV1_PIN_EN_POWER);
+
+    ret = aw9523_init(DEEPV1_I2C_PORT,
                                 DEEPV1_PIN_I2C_SDA,
                                 DEEPV1_PIN_I2C_SCL,
                                 DEEPV1_PIN_IO_RESET,
-                                DEEPV1_AW9523_ADDR));
+                                DEEPV1_AW9523_ADDR);
+    if (ret != ESP_OK) {
+        return ret;
+    }
 
     // CS is the only display control output connected directly to the MCU.
     gpio_config_t io_conf = {
@@ -141,7 +174,7 @@ void epd_gpio_config(void)
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
         .intr_type = GPIO_INTR_DISABLE,
     };
-    gpio_config(&io_conf);
+    ESP_ERROR_CHECK(gpio_config(&io_conf));
 
     // Configure BUSY pin as input (pull-up per board definition)
     gpio_config_t busy_conf = {
@@ -151,7 +184,7 @@ void epd_gpio_config(void)
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
         .intr_type = GPIO_INTR_DISABLE,
     };
-    gpio_config(&busy_conf);
+    ESP_ERROR_CHECK(gpio_config(&busy_conf));
 
     // Initial pin states
     gpio_set_level(EPD_PIN_CS, 1);               // CS inactive
@@ -184,6 +217,7 @@ void epd_gpio_config(void)
     ESP_ERROR_CHECK(spi_bus_add_device(EPD_SPI_HOST, &dev_cfg, &spi_dev));
 
     ESP_LOGI(TAG, "GDEM0397T81P initialized (SPI %d Hz)", EPD_SPI_CLOCK_HZ);
+    return ESP_OK;
 }
 
 // ─── Busy / Status ─────────────────────────────────────────────────────
@@ -193,24 +227,28 @@ bool epd_is_busy(void)
     return (gpio_get_level(EPD_PIN_BUSY) == EPD_BUSY_ACTIVE_LEVEL);
 }
 
-static void epd_read_busy(void)
+static esp_err_t epd_read_busy(void)
 {
+    if (s_panel_error != ESP_OK) return s_panel_error;
     int waited_ms = 0;
 
     while (epd_is_busy()) {
         if (waited_ms >= EPD_BUSY_TIMEOUT_MS) {
             ESP_LOGE(TAG, "BUSY timeout after %d ms", waited_ms);
-            return;
+            s_panel_error = ESP_ERR_TIMEOUT;
+            return s_panel_error;
         }
         delay_xms(10);
         waited_ms += 10;
     }
+    return ESP_OK;
 }
 
 // ─── Hardware Reset ────────────────────────────────────────────────────
 
 static void epd_reset(void)
 {
+    if (s_panel_error != ESP_OK) return;
     aw9523_set_pin(EPD_AW_PIN_RST, EPD_RST_ACTIVE_LEVEL);  // assert reset
     delay_xms(10);
     aw9523_set_pin(EPD_AW_PIN_RST, !EPD_RST_ACTIVE_LEVEL); // release reset
@@ -231,7 +269,7 @@ static void EPD_Update(void)
     epd_write_cmd(0x22); // Display Update Control
     epd_write_data(0xF7);
     epd_write_cmd(0x20); // Activate Display Update Sequence
-    epd_read_busy();
+    if (epd_read_busy() != ESP_OK) return;
 }
 
 static void EPD_Update_Fast(void)
@@ -239,7 +277,7 @@ static void EPD_Update_Fast(void)
     epd_write_cmd(0x22);
     epd_write_data(0xD7);
     epd_write_cmd(0x20);
-    epd_read_busy();
+    if (epd_read_busy() != ESP_OK) return;
 }
 
 static void EPD_Update_4G(void)
@@ -247,7 +285,7 @@ static void EPD_Update_4G(void)
     epd_write_cmd(0x22);
     epd_write_data(0xD7);
     epd_write_cmd(0x20);
-    epd_read_busy();
+    if (epd_read_busy() != ESP_OK) return;
 }
 
 static void EPD_Part_Update(void)
@@ -255,7 +293,7 @@ static void EPD_Part_Update(void)
     epd_write_cmd(0x22);
     epd_write_data(0xFF);
     epd_write_cmd(0x20);
-    epd_read_busy();
+    if (epd_read_busy() != ESP_OK) return;
 }
 
 // ─── Full screen update initialization ─────────────────────────────────
@@ -265,11 +303,11 @@ void EPD_HW_Init(void)
     ESP_LOGI(TAG, "EPD init: reset");
     epd_reset();
     ESP_LOGI(TAG, "EPD init: wait after reset");
-    epd_read_busy();
+    if (epd_read_busy() != ESP_OK) return;
     ESP_LOGI(TAG, "EPD init: software reset");
     epd_write_cmd(0x12); // SWRESET
     ESP_LOGI(TAG, "EPD init: wait after software reset");
-    epd_read_busy();
+    if (epd_read_busy() != ESP_OK) return;
 
     epd_write_cmd(0x18);
     epd_write_data(0x80);
@@ -310,7 +348,7 @@ void EPD_HW_Init(void)
     epd_write_cmd(0x4F); // set RAM y address count to 0
     epd_write_data(0x00);
     epd_write_data(0x00);
-    epd_read_busy();
+    if (epd_read_busy() != ESP_OK) return;
 }
 
 // ─── Fast update initialization ────────────────────────────────────────
@@ -318,9 +356,9 @@ void EPD_HW_Init(void)
 void EPD_HW_Init_Fast(void)
 {
     epd_reset();
-    epd_read_busy();
+    if (epd_read_busy() != ESP_OK) return;
     epd_write_cmd(0x12); // SWRESET
-    epd_read_busy();
+    if (epd_read_busy() != ESP_OK) return;
 
     epd_write_cmd(0x0C);
     epd_write_data(0xAE);
@@ -355,7 +393,7 @@ void EPD_HW_Init_Fast(void)
     epd_write_cmd(0x4F);
     epd_write_data(0x00);
     epd_write_data(0x00);
-    epd_read_busy();
+    if (epd_read_busy() != ESP_OK) return;
 
     epd_write_cmd(0x3C);
     epd_write_data(0x01);
@@ -373,9 +411,9 @@ void EPD_HW_Init_Fast(void)
 void EPD_HW_Init_4G(void)
 {
     epd_reset();
-    epd_read_busy();
+    if (epd_read_busy() != ESP_OK) return;
     epd_write_cmd(0x12); // SWRESET
-    epd_read_busy();
+    if (epd_read_busy() != ESP_OK) return;
 
     epd_write_cmd(0x0C);
     epd_write_data(0xAE);
@@ -410,7 +448,7 @@ void EPD_HW_Init_4G(void)
     epd_write_cmd(0x4F);
     epd_write_data(0x00);
     epd_write_data(0x00);
-    epd_read_busy();
+    if (epd_read_busy() != ESP_OK) return;
 
     epd_write_cmd(0x3C);
     epd_write_data(0x01);
@@ -428,9 +466,9 @@ void EPD_HW_Init_4G(void)
 void EPD_HW_Init_180(void)
 {
     epd_reset();
-    epd_read_busy();
+    if (epd_read_busy() != ESP_OK) return;
     epd_write_cmd(0x12); // SWRESET
-    epd_read_busy();
+    if (epd_read_busy() != ESP_OK) return;
 
     epd_write_cmd(0x18);
     epd_write_data(0x80);
@@ -471,7 +509,7 @@ void EPD_HW_Init_180(void)
     epd_write_cmd(0x4F);
     epd_write_data(0x00);
     epd_write_data(0x00);
-    epd_read_busy();
+    if (epd_read_busy() != ESP_OK) return;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

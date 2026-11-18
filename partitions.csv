@@ -4,8 +4,8 @@
 # 所以开发流程不变。ota_0 / ota_1 各 3MB（当前固件约 1MB，留足余量），
 # 两个 app 分区的偏移必须 64KB 对齐。
 #
-# 注意：改分区表会挪动 fdb_kvdb 的位置，设备上的 FlashDB 数据会失效，
-#       升到这张表需要整片擦除后重新烧录（idf.py erase-flash flash）。
+# fdb_user 扩容时保留起始偏移和 4 KiB 扇区布局，以便继续读取已有用户数据。
+# 升级固件时必须同时烧录新分区表；不要擦除整片 Flash。
 #
 # Name,      Type, SubType,  Offset,    Size,     Flags
 nvs,         data, nvs,      0x9000,    0x6000,
@@ -17,7 +17,7 @@ ota_1,       app,  ota_1,    0x320000,  0x300000,
 #   fdb_sys  —— 厂家数据：机器码、序列号、出厂标定。产线单独刷，用户擦不掉。
 #   fdb_user —— 用户数据：Wi-Fi 凭据、各 app 的设置和使用记录。
 fdb_sys,     data, fat,      0x620000,  0x8000,
-fdb_user,    data, fat,      0x628000,  0x20000,
-# storage: 保留的内部 FAT 分区。量产固件的 /sdcard 现由物理 SDMMC 卡提供，
-# 保留此分区避免改变既有分区布局和 OTA 升级兼容性。
-storage,     data, fat,      0x648000,  0x200000,
+fdb_user,    data, fat,      0x628000,  0x400000,
+# storage: 保留的内部 FAT 分区。/sdcard 由物理 SDMMC 卡提供。
+# 扩容 fdb_user 后将此未使用分区后移，旧 storage 内容不会迁移。
+storage,     data, fat,      0xA28000,  0x200000,

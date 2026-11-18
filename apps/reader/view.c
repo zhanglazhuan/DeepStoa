@@ -5,8 +5,8 @@
 #include "view.h"
 #include "model.h"
 #include "controller.h"
-#include "./subpages/view_library.h"
-#include "./subpages/view_reading.h"
+#include "./pages/view_library.h"
+#include "./pages/view_reading.h"
 
 // --- 视图接口实现 ---
 void reader_view_init(ReaderApp *app) {

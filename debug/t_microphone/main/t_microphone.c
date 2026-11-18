@@ -1,4 +1,4 @@
-// Hardware routing: design/墨水屏-原理图V1.0.pdf, audio sheet.
+// Hardware routing: design/DeepStoa_V1.1.pdf, audio sheet.
 // Architecture reference: xiaozhi-esp32 BoxAudioCodec / AfeAudioEngine.
 #include <assert.h>
 #include <math.h>
@@ -9,6 +9,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/event_groups.h"
+#include "driver/gpio.h"
 #include "driver/i2s_std.h"
 #include "driver/i2s_tdm.h"
 #include "driver/i2c_master.h"
@@ -37,17 +38,30 @@ static EventGroupHandle_t events;
 
 static void audio_init(void)
 {
+    // Power the codecs before initializing their shared I2C bus.
+    gpio_config_t power_conf = {
+        .pin_bit_mask = 1ULL << DEEPV1_PIN_EN_POWER,
+        .mode = GPIO_MODE_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    ESP_ERROR_CHECK(gpio_config(&power_conf));
+    ESP_ERROR_CHECK(gpio_set_level(DEEPV1_PIN_EN_POWER, 1));
+    vTaskDelay(pdMS_TO_TICKS(100));
+    ESP_LOGI(TAG, "EN_POWER GPIO%d HIGH before shared I2C initialization",
+        DEEPV1_PIN_EN_POWER);
+
     ESP_ERROR_CHECK(aw9523_init(DEEPV1_I2C_PORT, DEEPV1_PIN_I2C_SDA,
         DEEPV1_PIN_I2C_SCL, DEEPV1_PIN_IO_RESET, DEEPV1_AW9523_ADDR));
     aw9523_set_pin(DEEPV1_AW_PIN_AP_EN, 0);
-    aw9523_set_pin(DEEPV1_AW_PIN_EN_POWER, 1);
     vTaskDelay(pdMS_TO_TICKS(100));
     i2c_master_bus_handle_t bus = aw9523_get_i2c_bus();
     ESP_ERROR_CHECK(i2c_master_probe(bus, 0x18, 100));
     ESP_ERROR_CHECK(i2c_master_probe(bus, 0x40, 100));
 
     i2s_chan_handle_t tx, rx;
-    i2s_chan_config_t chan = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_MASTER);
+    i2s_chan_config_t chan = I2S_CHANNEL_DEFAULT_CONFIG((i2s_port_t)DEEPV1_I2S_PORT, I2S_ROLE_MASTER);
     chan.auto_clear = true;
     ESP_ERROR_CHECK(i2s_new_channel(&chan, &tx, &rx));
     i2s_std_config_t std = {
@@ -68,7 +82,7 @@ static void audio_init(void)
     ESP_ERROR_CHECK(i2s_channel_enable(tx));
     ESP_ERROR_CHECK(i2s_channel_enable(rx));
 
-    audio_codec_i2s_cfg_t data_cfg = {.port = I2S_NUM_0, .tx_handle = tx, .rx_handle = rx};
+    audio_codec_i2s_cfg_t data_cfg = {.port = DEEPV1_I2S_PORT, .tx_handle = tx, .rx_handle = rx};
     const audio_codec_data_if_t *data = audio_codec_new_i2s_data(&data_cfg);
     assert(data);
     // esp_codec_dev uses 8-bit addresses, unlike i2c_master_probe above.

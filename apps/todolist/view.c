@@ -11,11 +11,11 @@
 #include "app.h"
 
 #include "./modules/view_timer.h"
-#include "./subpages/view_task_form.h"
-#include "./subpages/view_settings.h"
-#include "./subpages/view_home.h"
-#include "./subpages/view_about.h"
-#include "./subpages/view_launch.h"
+#include "./pages/view_task_form.h"
+#include "./pages/view_settings.h"
+#include "./pages/view_home.h"
+#include "./pages/view_about.h"
+#include "./pages/view_launch.h"
 
 // 全局应用实例
 extern TodoListApp g_todolist_app;

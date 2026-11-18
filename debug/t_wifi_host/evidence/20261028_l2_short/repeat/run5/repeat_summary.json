@@ -1,0 +1,10 @@
+{
+  "run": 5,
+  "root": "D:\\Codes\\DeepStoa\\debug\\t_wifi_host\\build\\capture_19dbm_20261028_141703",
+  "high_attempts": 6,
+  "high_ap_auth_seen": 0,
+  "high_sta_auth_seen": 0,
+  "high_ip_pass": 0,
+  "low_attempts": 4,
+  "low_ip_pass": 4
+}

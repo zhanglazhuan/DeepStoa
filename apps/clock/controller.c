@@ -17,8 +17,9 @@
 #include "alarm_service.h"
 #include "controller.h"
 #include "model.h"
-#include "subpages/view_alarm_edit.h"
-#include "subpages/view_main.h"
+#include "pages/view_alarm_edit.h"
+#include "pages/view_alarm.h"
+#include "pages/view_timer.h"
 #include "view.h"
 
 static const char *TAG = "clock_ctrl";
@@ -74,7 +75,7 @@ void clock_controller_on_add_alarm(lv_event_t *e)
     ClockApp *app = lv_event_get_user_data(e);
 
     if (alarm_service_count() >= ALARM_MAX_COUNT) {
-        clock_view_main_show_max_alarm_warning();
+        clock_view_alarm_show_max_warning();
         return;
     }
 
@@ -111,7 +112,7 @@ void clock_controller_on_alarm_toggle(lv_event_t *e)
 
     /* 删除线立刻跟上。原来这里只改模型不动 UI，删除线要等下次重建列表
      * （重进页面）才变，看起来就是"开关动了、文字没反应"。 */
-    clock_view_main_set_row_enabled(sw, on);
+    clock_view_alarm_set_row_enabled(sw, on);
 }
 
 void clock_controller_on_alarm_row_clicked(lv_event_t *e)
@@ -238,7 +239,7 @@ void clock_controller_on_timer_preset_apply(lv_event_t *e)
     /* 一次点中就是最终时长，不用再按 Reset 确认 */
     alarm_service_timer_set((uint32_t)alarm_service_preset(idx) * 60u);
 
-    clock_view_main_refresh_timer_chips(app);
+    clock_view_timer_refresh_chips(app);
     clock_view_refresh_timer(app);
 }
 
@@ -266,7 +267,7 @@ void clock_controller_on_timer_custom_use(lv_event_t *e)
     app->model->active_tab = 1;
     page_navigator_navigate_pop(&app->view->page_nav, app);
 
-    clock_view_main_refresh_timer_chips(app);
+    clock_view_timer_refresh_chips(app);
     clock_view_refresh_timer(app);
 }
 
@@ -285,7 +286,7 @@ void clock_controller_on_timer_preset_save(lv_event_t *e)
 
     app->model->active_tab = 1;
     page_navigator_navigate_pop(&app->view->page_nav, app);
-    clock_view_main_refresh_timer_chips(app);
+    clock_view_timer_refresh_chips(app);
 }
 
 void clock_controller_on_tab_changed(lv_tab_t *tab, uint32_t idx, void *user_data)

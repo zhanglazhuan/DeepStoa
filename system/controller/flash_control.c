@@ -29,11 +29,22 @@ struct fdb_kvdb g_sys_kvdb;   /* 厂家区 */
  * 设备无限重启，backtrace 还指在 ROM 里，极难定位。
  * 分区表在开发期还会变（SD、音频分区…），这个坑必须挡住。
  */
-static bool init_kvdb(struct fdb_kvdb *db, const char *name, const char *part)
+static bool init_kvdb(struct fdb_kvdb *db, const char *name, const char *part,
+                      size_t expected_size)
 {
     if (!fal_partition_find(part)) {
         ESP_LOGE(TAG, "FAL partition '%s' not found — "
                       "partition table does not match the firmware - run idf.py erase-flash flash", part);
+        return false;
+    }
+
+    const esp_partition_t *partition = esp_partition_find_first(
+        ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_ANY, part);
+    if (!partition || partition->size != expected_size) {
+        ESP_LOGE(TAG, "Partition '%s' size mismatch: expected %u, found %u; "
+                 "flash the new partition table before using the firmware",
+                 part, (unsigned)expected_size,
+                 partition ? (unsigned)partition->size : 0U);
         return false;
     }
 
@@ -45,20 +56,25 @@ static bool init_kvdb(struct fdb_kvdb *db, const char *name, const char *part)
     return true;
 }
 
-void flash_control_init(void)
+bool flash_control_init(void)
 {
     fal_init();
 
     /* 用户区。数据库名沿用 "env"，现有数据布局不变。 */
-    if (init_kvdb(&g_kvdb, "env", "fdb_user")) {
+    bool user_ready = init_kvdb(&g_kvdb, "env", "fdb_user",
+                                4U * 1024U * 1024U);
+    if (user_ready) {
         ESP_LOGI(TAG, "FlashDB user KV ready on 'fdb_user'");
     }
 
     /* 厂家区 */
-    if (init_kvdb(&g_sys_kvdb, "sys", "fdb_sys")) {
+    bool sys_ready = init_kvdb(&g_sys_kvdb, "sys", "fdb_sys",
+                               32U * 1024U);
+    if (sys_ready) {
         ESP_LOGI(TAG, "FlashDB sys KV ready on 'fdb_sys' (device %s)",
                  flash_sys_device_id());
     }
+    return user_ready && sys_ready;
 }
 
 void flash_control_deinit(void)

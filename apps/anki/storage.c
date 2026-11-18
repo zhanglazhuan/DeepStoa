@@ -1,6 +1,10 @@
 #include "esp_log.h"
 #include "storage.h"
 #include "trash.h"
+#include "index_store.h"
+#include "blob_store.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include <limits.h>
 
 static const char *TAG = "anki_storage";
@@ -11,7 +15,6 @@ static const char *TAG = "anki_storage";
 #define ANKI_REVIEW_LOG_VERSION UINT16_C(1)
 #define ANKI_REVIEW_LOG_CHUNKS 32U
 #define ANKI_REVIEWS_PER_CHUNK 32U
-
 typedef struct {
     uint32_t magic;
     uint16_t version;
@@ -47,6 +50,8 @@ _Static_assert(sizeof(anki_review_log_entry_t) == 16,
 
 _Static_assert(sizeof(CardIndex) == 24,
                "CardIndex layout must remain compatible with legacy blobs");
+_Static_assert(sizeof(AnkiDeck) == 172,
+               "Deck storage layout changed; migrate versioned catalog first");
 
 static void schedule_key(char *key, size_t size, uint32_t card_id)
 {
@@ -94,25 +99,11 @@ static bool scan_card_ids(AnkiModel *model, bool migrate_legacy,
 {
     *max_id = 0;
     for (int i = 0; i < model->deck_count; i++) {
-        char key[32];
-        snprintf(key, sizeof(key), "anki_cards_%u",
-                 (unsigned)model->decks[i].deck_id);
-
-        struct fdb_blob blob;
-        fdb_kv_get_blob(&g_kvdb, key, fdb_blob_make(&blob, NULL, 0));
-        size_t len = blob.saved.len;
-        if (len == 0) continue;
-        if (len % sizeof(CardIndex) != 0 ||
-            len > sizeof(CardIndex) * ANKI_MAX_CARDS_PER_DECK) return false;
-
-        CardIndex *cards = malloc(len);
-        if (!cards) return false;
-        if (fdb_kv_get_blob(&g_kvdb, key,
-                            fdb_blob_make(&blob, cards, len)) != len) {
-            free(cards);
-            return false;
-        }
-        size_t count = len / sizeof(CardIndex);
+        uint32_t deck_id = model->decks[i].deck_id;
+        CardIndex *cards = NULL;
+        uint16_t count = 0;
+        if (!anki_index_load_cards(deck_id, &cards, &count)) return false;
+        if (count == 0) continue;
         for (size_t c = 0; c < count; c++) {
             /* Legacy card_id was uint16_t followed by two padding bytes. */
             if (migrate_legacy) cards[c].card_id &= 0xFFFFU;
@@ -128,10 +119,25 @@ static bool scan_card_ids(AnkiModel *model, bool migrate_legacy,
             if (cards[c].card_id > *max_id) *max_id = cards[c].card_id;
         }
         if (migrate_legacy) {
-            if (fdb_kv_set_blob(&g_kvdb, key,
-                                fdb_blob_make(&blob, cards, len)) != FDB_NO_ERR) {
-                free(cards);
-                return false;
+            if (anki_index_is_chunked(deck_id)) {
+                AnkiSourceIndex *sources = NULL;
+                uint16_t source_count = 0;
+                bool ok = anki_index_load_sources(deck_id, &sources,
+                                                  &source_count) &&
+                          source_count == count &&
+                          anki_index_save(deck_id, cards, sources, count);
+                free(sources);
+                if (!ok) { free(cards); return false; }
+            } else {
+                char key[32];
+                snprintf(key, sizeof(key), "anki_cards_%u", (unsigned)deck_id);
+                struct fdb_blob blob;
+                if (fdb_kv_set_blob(&g_kvdb, key,
+                                    fdb_blob_make(&blob, cards,
+                                                  count * sizeof(*cards))) != FDB_NO_ERR) {
+                    free(cards);
+                    return false;
+                }
             }
         }
         free(cards);
@@ -143,36 +149,21 @@ static bool delete_existing_schedule_states(void)
 {
     AnkiDeck *decks = calloc(ANKI_MAX_DECK_CAPACITY, sizeof(*decks));
     if (!decks) return false;
-    struct fdb_blob blob;
-    size_t deck_len = fdb_kv_get_blob(&g_kvdb, "anki_decks",
-        fdb_blob_make(&blob, decks,
-                      sizeof(*decks) * ANKI_MAX_DECK_CAPACITY));
-    if (deck_len % sizeof(*decks) != 0 ||
-        deck_len > sizeof(*decks) * ANKI_MAX_DECK_CAPACITY) {
+    uint16_t deck_count = 0;
+    if (!anki_blob_load("anki_decks", "ad", sizeof(*decks),
+                        ANKI_MAX_DECK_CAPACITY, decks, &deck_count)) {
         free(decks);
         return false;
     }
-    size_t deck_count = deck_len / sizeof(*decks);
     for (size_t i = 0; i < deck_count; i++) {
-        char key[32];
-        snprintf(key, sizeof(key), "anki_cards_%u", (unsigned)decks[i].deck_id);
-        fdb_kv_get_blob(&g_kvdb, key, fdb_blob_make(&blob, NULL, 0));
-        size_t card_len = blob.saved.len;
-        if (card_len == 0 || card_len % sizeof(CardIndex) != 0 ||
-            card_len > sizeof(CardIndex) * ANKI_MAX_CARDS_PER_DECK) continue;
-        CardIndex *cards = malloc(card_len);
-        if (!cards) {
+        CardIndex *cards = NULL;
+        uint16_t count = 0;
+        if (!anki_index_load_cards(decks[i].deck_id, &cards, &count)) {
             free(decks);
             return false;
         }
-        if (fdb_kv_get_blob(&g_kvdb, key,
-                            fdb_blob_make(&blob, cards, card_len)) != card_len) {
-            free(cards);
-            free(decks);
-            return false;
-        }
-        size_t count = card_len / sizeof(*cards);
         for (size_t c = 0; c < count; c++) {
+            if ((c & 31U) == 0) vTaskDelay(1);
             if (!anki_storage_delete_schedule(cards[c].card_id)) {
                 free(cards);
                 free(decks);
@@ -184,9 +175,10 @@ static bool delete_existing_schedule_states(void)
             fdb_kv_del(&g_kvdb, payload_key);
         }
         free(cards);
-        fdb_kv_del(&g_kvdb, key);
-        snprintf(key, sizeof(key), "anki_src_%u", (unsigned)decks[i].deck_id);
-        fdb_kv_del(&g_kvdb, key);
+        if (!anki_index_delete(decks[i].deck_id)) {
+            free(decks);
+            return false;
+        }
     }
     free(decks);
     fdb_kv_del(&g_kvdb, "anki_daily_v1");
@@ -202,6 +194,7 @@ static bool delete_existing_schedule_states(void)
 
 bool anki_app_factory_reset(void) {
     struct fdb_blob blob;
+    if (!anki_storage_rating_recover()) return false;
     if (!delete_existing_schedule_states()) return false;
     if (!anki_trash_factory_reset()) {
         ESP_LOGE(TAG, "Failed to clear recycle-bin state");
@@ -276,9 +269,8 @@ bool anki_app_factory_reset(void) {
     tutorial_decks[2].new_cards_count = 0;
     tutorial_decks[2].due_cards_count = 0;
 
-    if (fdb_kv_set_blob(&g_kvdb, "anki_decks",
-                        fdb_blob_make(&blob, tutorial_decks,
-                                      sizeof(tutorial_decks))) != FDB_NO_ERR) {
+    if (!anki_blob_save("anki_decks", "ad", sizeof(AnkiDeck),
+                        ANKI_MAX_DECK_CAPACITY, tutorial_decks, 3)) {
         return false;
     }
 
@@ -336,7 +328,8 @@ bool anki_app_factory_reset(void) {
     memset(&payload, 0, sizeof(CardPayload));
     strncpy(payload.front, "How to create cards for a deck?", sizeof(payload.front) - 1);
     strncpy(payload.back,
-            "Put .txt files in /sdcard/anki. Use one card per line, with front and back separated by '|'.",
+            "Put .txt files in /sdcard/anki. Use one card per line: front|back. "
+            "Write \\n in back for a line break.",
             sizeof(payload.back) - 1);
     snprintf(key_buf, sizeof(key_buf), "anki_payload_%d", 3);
     if (fdb_kv_set_blob(&g_kvdb, key_buf,
@@ -399,10 +392,10 @@ void anki_storage_load_all(AnkiModel *model) {
     }
 
     // 3. 加载牌组列表 (Decks 结构体里已经包含了 custom_settings)
-    read_len = fdb_kv_get_blob(&g_kvdb, "anki_decks", fdb_blob_make(&blob, model->decks, sizeof(AnkiDeck) * ANKI_MAX_DECK_CAPACITY));
-    if (read_len > 0 && read_len <= sizeof(AnkiDeck) * ANKI_MAX_DECK_CAPACITY &&
-        read_len % sizeof(AnkiDeck) == 0) {
-        model->deck_count = read_len / sizeof(AnkiDeck);
+    uint16_t loaded_decks = 0;
+    if (anki_blob_load("anki_decks", "ad", sizeof(AnkiDeck),
+                       ANKI_MAX_DECK_CAPACITY, model->decks, &loaded_decks)) {
+        model->deck_count = loaded_decks;
         bool valid_catalog = true;
         for (int i = 0; i < model->deck_count; i++) {
             AnkiDeck *deck = &model->decks[i];
@@ -424,8 +417,8 @@ void anki_storage_load_all(AnkiModel *model) {
         }
         ESP_LOGI(TAG, "Loaded %d decks from FlashDB", model->deck_count);
     } else {
-        if (read_len > 0) ESP_LOGW(TAG, "Invalid deck blob length: %u", (unsigned)read_len);
-        if (read_len > 0) model->storage_fault = true;
+        ESP_LOGE(TAG, "Deck catalog cannot be loaded");
+        model->storage_fault = true;
         model->deck_count = 0;
     }
 
@@ -497,17 +490,6 @@ bool anki_storage_sync_global_settings(AnkiModel *model) {
 bool anki_storage_sync_meta(AnkiModel *model) {
     if (!model) return false;
     struct fdb_blob blob;
-    
-    // 将分散在 model 中的状态打包写入
-    anki_storage_meta_v1_t meta_v1 = {
-        ._id_generator = model->_id_generator,
-        .active_deck_idx = model->active_deck_idx,
-        .active_card_idx = model->active_card_idx
-    };
-    fdb_err_t err_v1 = fdb_kv_set_blob(&g_kvdb, "anki_meta",
-                                    fdb_blob_make(&blob, &meta_v1, sizeof(meta_v1)));
-    if (err_v1 != FDB_NO_ERR) ESP_LOGE(TAG, "save legacy metadata failed: %d", err_v1);
-
     anki_storage_meta_v2_t meta_v2 = {
         .magic = ANKI_META_V2_MAGIC,
         .version = ANKI_META_V2_VERSION,
@@ -520,23 +502,16 @@ bool anki_storage_sync_meta(AnkiModel *model) {
                                        fdb_blob_make(&blob, &meta_v2,
                                                      sizeof(meta_v2)));
     if (err_v2 != FDB_NO_ERR) ESP_LOGE(TAG, "save metadata v2 failed: %d", err_v2);
-    return err_v1 == FDB_NO_ERR && err_v2 == FDB_NO_ERR;
+    return err_v2 == FDB_NO_ERR;
 }
 
 bool anki_storage_sync_decks(AnkiModel *model) {
     if (!model) return false;
-    size_t len = model->deck_count * sizeof(AnkiDeck);
-    if (len > 0) {
-        struct fdb_blob blob;
-        fdb_err_t err = fdb_kv_set_blob(&g_kvdb, "anki_decks", fdb_blob_make(&blob, model->decks, len));
-        if (err != FDB_NO_ERR) ESP_LOGE(TAG, "save decks failed: %d", err);
-        return err == FDB_NO_ERR;
-    } else {
-        struct fdb_blob blob;
-        fdb_kv_get_blob(&g_kvdb, "anki_decks", fdb_blob_make(&blob, NULL, 0));
-        return blob.saved.len == 0 ||
-               fdb_kv_del(&g_kvdb, "anki_decks") == FDB_NO_ERR;
-    }
+    bool ok = anki_blob_save("anki_decks", "ad", sizeof(AnkiDeck),
+                             ANKI_MAX_DECK_CAPACITY, model->decks,
+                             model->deck_count);
+    if (!ok) ESP_LOGE(TAG, "save decks failed");
+    return ok;
 }
 
 bool anki_storage_sync_daily_progress(AnkiModel *model)

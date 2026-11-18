@@ -99,7 +99,17 @@ void app_main(void)
 
     // ---- 4. Init flash storage ----
     ESP_LOGI(TAG, "Init FlashDB...");
-    flash_control_init();
+    if (!flash_control_init()) {
+        ESP_LOGE(TAG, "FlashDB unavailable; check the flashed partition table");
+        lv_obj_t *storage_error = lv_label_create(lv_screen_active());
+        lv_label_set_text(storage_error,
+                          "Storage unavailable\nCheck partition table and serial log");
+        lv_obj_center(storage_error);
+        while (1) {
+            lv_timer_handler();
+            vTaskDelay(pdMS_TO_TICKS(100));
+        }
+    }
 
     /* 走到这里说明这版固件能起来 —— ota_init() 里会取消 bootloader 回滚，
      * 并把上一次升级的结果排队回报给服务端。必须在 FlashDB 之后。 */

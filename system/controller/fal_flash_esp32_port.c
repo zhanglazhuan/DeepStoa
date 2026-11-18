@@ -77,4 +77,4 @@ static void ensure_lock(void)
     }
 
 DEFINE_FAL_DEV(sys,  "fdb_sys",  NOR_FLASH_SYS_NAME,   32 * 1024);
-DEFINE_FAL_DEV(user, "fdb_user", NOR_FLASH_USER_NAME, 128 * 1024);
+DEFINE_FAL_DEV(user, "fdb_user", NOR_FLASH_USER_NAME, 4 * 1024 * 1024);

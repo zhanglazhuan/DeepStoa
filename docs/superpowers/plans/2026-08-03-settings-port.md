@@ -143,16 +143,16 @@ git commit -m "feat(controller): add flash_control (FlashDB KV wrapper)"
 - Create: `apps/settings/settings_controller.c`
 - Create: `apps/settings/settings_view.h`
 - Create: `apps/settings/settings_view.c`
-- Create: `apps/settings/subpages/view_home.h`
-- Create: `apps/settings/subpages/view_home.c`
-- Create: `apps/settings/subpages/view_general.h`
-- Create: `apps/settings/subpages/view_general.c`
-- Create: `apps/settings/subpages/view_battery.h`
-- Create: `apps/settings/subpages/view_battery.c`
-- Create: `apps/settings/subpages/view_storage.h`
-- Create: `apps/settings/subpages/view_storage.c`
-- Create: `apps/settings/subpages/view_security.h`
-- Create: `apps/settings/subpages/view_security.c`
+- Create: `apps/settings/pages/view_home.h`
+- Create: `apps/settings/pages/view_home.c`
+- Create: `apps/settings/pages/view_general.h`
+- Create: `apps/settings/pages/view_general.c`
+- Create: `apps/settings/pages/view_battery.h`
+- Create: `apps/settings/pages/view_battery.c`
+- Create: `apps/settings/pages/view_storage.h`
+- Create: `apps/settings/pages/view_storage.c`
+- Create: `apps/settings/pages/view_security.h`
+- Create: `apps/settings/pages/view_security.c`
 
 **Interfaces:**
 - Produces: `SettingsApp g_settings_app;` — global app instance
@@ -169,11 +169,11 @@ idf_component_register(
         "settings_model.c"
         "settings_controller.c"
         "settings_view.c"
-        "subpages/view_home.c"
-        "subpages/view_general.c"
-        "subpages/view_battery.c"
-        "subpages/view_storage.c"
-        "subpages/view_security.c"
+        "pages/view_home.c"
+        "pages/view_general.c"
+        "pages/view_battery.c"
+        "pages/view_storage.c"
+        "pages/view_security.c"
     INCLUDE_DIRS "."
     REQUIRES driver lvgl
     PRIV_REQUIRES appmgr uilv controller flashdb
@@ -677,11 +677,11 @@ git commit -m "feat(settings): port settings_controller (Phase 1)"
 ### Task 5: Port subpage views (Phase 1: 5 subpages)
 
 **Files:**
-- Create: `apps/settings/subpages/view_home.h` / `.c`
-- Create: `apps/settings/subpages/view_general.h` / `.c`
-- Create: `apps/settings/subpages/view_battery.h` / `.c`
-- Create: `apps/settings/subpages/view_storage.h` / `.c`
-- Create: `apps/settings/subpages/view_security.h` / `.c`
+- Create: `apps/settings/pages/view_home.h` / `.c`
+- Create: `apps/settings/pages/view_general.h` / `.c`
+- Create: `apps/settings/pages/view_battery.h` / `.c`
+- Create: `apps/settings/pages/view_storage.h` / `.c`
+- Create: `apps/settings/pages/view_security.h` / `.c`
 
 **Interfaces:**
 - Each subpage produces: `void settings_view_<name>_init_registry(SettingsApp *app);` — registers page builder with page_navigator
@@ -700,36 +700,36 @@ git commit -m "feat(settings): port settings_controller (Phase 1)"
 
 Read source: `D:\Codes\EPOS\epos\apps\settings\subpages\view_home.c`
 Apply mechanical transformations above.
-Save to: `apps/settings/subpages/view_home.c`
+Save to: `apps/settings/pages/view_home.c`
 
 - [ ] **Step 2: Port view_general.c from EPOS**
 
 Read source: `D:\Codes\EPOS\epos\apps\settings\subpages\view_general.c`
 Apply transformations.
-Save to: `apps/settings/subpages/view_general.c`
+Save to: `apps/settings/pages/view_general.c`
 
 - [ ] **Step 3: Port view_battery.c from EPOS**
 
 Read source: `D:\Codes\EPOS\epos\apps\settings\subpages\view_battery.c`
 Apply transformations.
-Save to: `apps/settings/subpages/view_battery.c`
+Save to: `apps/settings/pages/view_battery.c`
 
 - [ ] **Step 4: Port view_storage.c from EPOS**
 
 Read source: `D:\Codes\EPOS\epos\apps\settings\subpages\view_storage.c`
 Apply transformations.
-Save to: `apps/settings/subpages/view_storage.c`
+Save to: `apps/settings/pages/view_storage.c`
 
 - [ ] **Step 5: Port view_security.c from EPOS**
 
 Read source: `D:\Codes\EPOS\epos\apps\settings\subpages\view_security.c`
 Apply transformations.
-Save to: `apps/settings/subpages/view_security.c`
+Save to: `apps/settings/pages/view_security.c`
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add apps/settings/subpages/
+git add apps/settings/pages/
 git commit -m "feat(settings): port Phase 1 subpage views"
 ```
 
@@ -804,11 +804,11 @@ void settings_view_deinit(struct SettingsApp *app);
 #include "settings_controller.h"
 
 // Subpage includes
-#include "subpages/view_home.h"
-#include "subpages/view_general.h"
-#include "subpages/view_battery.h"
-#include "subpages/view_storage.h"
-#include "subpages/view_security.h"
+#include "pages/view_home.h"
+#include "pages/view_general.h"
+#include "pages/view_battery.h"
+#include "pages/view_storage.h"
+#include "pages/view_security.h"
 
 static const char *TAG = "settings_view";
 

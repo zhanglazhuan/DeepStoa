@@ -5,6 +5,7 @@
 #include "view.h"
 #include "app.h"
 #include "storage.h"
+#include "index_store.h"
 #include "time_service.h"
 
 #include "esp_log.h"
@@ -45,33 +46,18 @@ void anki_controller_sync(AnkiApp *app) {
     bool has_time = time_service_now(&now);
     for (int i = 0; i < model->deck_count; i++) {
         uint32_t deck_id = model->decks[i].deck_id;
-        char key_buf[32];
-        snprintf(key_buf, sizeof(key_buf), "anki_cards_%u", (unsigned int)deck_id);
-        
-        struct fdb_blob blob;
-        fdb_kv_get_blob(&g_kvdb, key_buf, fdb_blob_make(&blob, NULL, 0));
-        size_t blob_len = blob.saved.len; // 正确获取 KV 数据真实大小的方法
-        if (blob_len == 0) continue;
-        if (blob_len % sizeof(CardIndex) != 0 ||
-            blob_len > sizeof(CardIndex) * ANKI_MAX_CARDS_PER_DECK) {
-            ESP_LOGE(TAG, "Invalid card index length for deck %u: %u",
-                     (unsigned)deck_id, (unsigned)blob_len);
+        CardIndex *cards = NULL;
+        uint16_t own_total = 0;
+        if (!anki_index_load_cards(deck_id, &cards, &own_total)) {
+            ESP_LOGE(TAG, "Failed to read card index for deck %u", (unsigned)deck_id);
+            model->storage_fault = true;
             return;
         }
-            int own_total = blob_len / sizeof(CardIndex);
+        if (own_total == 0) continue;
             uint32_t own_active = 0;
             uint32_t own_new = 0;
             uint32_t own_due = 0;
             
-            CardIndex *cards = malloc(blob_len);
-            if (!cards) return;
-            if (fdb_kv_get_blob(&g_kvdb, key_buf,
-                                fdb_blob_make(&blob, cards, blob_len)) != blob_len) {
-                free(cards);
-                ESP_LOGE(TAG, "Failed to read card index for deck %u",
-                         (unsigned)deck_id);
-                return;
-            }
                 for (int c = 0; c < own_total; c++) {
                     if (cards[c].status & ANKI_CARD_FLAG_MISSING) continue;
                     own_active++;

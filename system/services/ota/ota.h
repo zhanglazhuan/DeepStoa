@@ -4,7 +4,7 @@
  *
  * 流程:
  *   ota_check_async()  ── 拉 manifest，比版本，回调回 LVGL 线程
- *        ↓ 用户二次确认（UI 层负责，见 apps/settings/subpages/view_update.c）
+ *        ↓ 用户二次确认（UI 层负责，见 apps/settings/pages/view_update.c）
  *   ota_install_async() ── 后台任务下载 + 写 flash + 切启动分区
  *        ↓ UI 轮询 ota_get_state() / ota_get_progress()
  *   ota_apply_and_reboot() ── 用户确认后重启生效

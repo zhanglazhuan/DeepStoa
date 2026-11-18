@@ -62,6 +62,9 @@ void aw9523_write_port(uint8_t port, uint8_t value);
  */
 uint8_t aw9523_read_port(uint8_t port);
 
+/** Read input register with error reporting; data is valid only on ESP_OK. */
+esp_err_t aw9523_read_port_checked(uint8_t port, uint8_t *data);
+
 /**
  * @brief Set a single pin output level.
  * @param pin    Encoded pin (use AW9523_PIN macro from board header)

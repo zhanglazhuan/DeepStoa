@@ -196,7 +196,7 @@ void settings_controller_set_timezone(lv_event_t *e)
     }
 }
 
-bool settings_controller_set_manual_datetime(int year, int month, int day,
+bool settings_controller_set_datetime(int year, int month, int day,
                                              int hour, int minute)
 {
     if (year < 2024 || year > 2105 || month < 1 || month > 12 ||

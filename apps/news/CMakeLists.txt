@@ -29,12 +29,12 @@ idf_component_register(
         "view.c"
         "controller.c"
         "${NEWS_SVC_SRC}"
-        "subpages/view_launch.c"
-        "subpages/view_list.c"
-        "subpages/view_detail.c"
-        "subpages/controller_list.c"
-        "subpages/controller_detail.c"
-    INCLUDE_DIRS "." "subpages" "service"
+        "pages/view_launch.c"
+        "pages/view_list.c"
+        "pages/view_detail.c"
+        "pages/controller_list.c"
+        "pages/controller_detail.c"
+    INCLUDE_DIRS "." "pages" "service"
     REQUIRES lvgl
     # json / esp_http_client / wifi 只有 http 实现用得上，但这里不能跟着
     # NEWS_SVC 分支写：ESP-IDF 先用 script mode 跑一遍本文件收集依赖，那一趟

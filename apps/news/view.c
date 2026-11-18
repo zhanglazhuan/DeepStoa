@@ -6,9 +6,9 @@
 #include "app.h"
 #include "view.h"
 #include "model.h"
-#include "subpages/view_list.h"
-#include "subpages/view_detail.h"
-#include "subpages/view_launch.h"
+#include "pages/view_list.h"
+#include "pages/view_detail.h"
+#include "pages/view_launch.h"
 
 static const char *TAG = "news_view";
 

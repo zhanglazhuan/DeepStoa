@@ -1,0 +1,73 @@
+[
+  {
+    "run": 1,
+    "root": "D:\\Codes\\DeepStoa\\debug\\t_wifi_host\\build\\capture_19dbm_20261028_141354",
+    "high_attempts": 6,
+    "high_ap_auth_seen": 0,
+    "high_sta_auth_seen": 0,
+    "high_ip_pass": 0,
+    "low_attempts": 4,
+    "low_ip_pass": 4,
+    "pcap_frames": 506,
+    "rx_error_records": 0,
+    "malformed_cap_records": []
+  },
+  {
+    "run": 2,
+    "root": "D:\\Codes\\DeepStoa\\debug\\t_wifi_host\\build\\capture_19dbm_20261028_141440",
+    "high_attempts": 6,
+    "high_ap_auth_seen": 0,
+    "high_sta_auth_seen": 0,
+    "high_ip_pass": 0,
+    "low_attempts": 4,
+    "low_ip_pass": 4,
+    "pcap_frames": 520,
+    "rx_error_records": 0,
+    "malformed_cap_records": [
+      "CAP 46911506 312 256 80000000ffffffffffff42d13336965142d13336965120d46d8ca0240100000064003187000c6d7"
+    ]
+  },
+  {
+    "run": 3,
+    "root": "D:\\Codes\\DeepStoa\\debug\\t_wifi_host\\build\\capture_19dbm_20261028_141528",
+    "high_attempts": 6,
+    "high_ap_auth_seen": 0,
+    "high_sta_auth_seen": 0,
+    "high_ip_pass": 0,
+    "low_attempts": 4,
+    "low_ip_pass": 4,
+    "pcap_frames": 512,
+    "rx_error_records": 0,
+    "malformed_cap_records": [
+      "CAP 46531643 312 256 80000000ffffffffffff42d13336965142d13336965150f20c1277270100000064003187000c6d7"
+    ]
+  },
+  {
+    "run": 4,
+    "root": "D:\\Codes\\DeepStoa\\debug\\t_wifi_host\\build\\capture_19dbm_20261028_141616",
+    "high_attempts": 6,
+    "high_ap_auth_seen": 0,
+    "high_sta_auth_seen": 0,
+    "high_ip_pass": 0,
+    "low_attempts": 4,
+    "low_ip_pass": 4,
+    "pcap_frames": 518,
+    "rx_error_records": 0,
+    "malformed_cap_records": []
+  },
+  {
+    "run": 5,
+    "root": "D:\\Codes\\DeepStoa\\debug\\t_wifi_host\\build\\capture_19dbm_20261028_141703",
+    "high_attempts": 6,
+    "high_ap_auth_seen": 0,
+    "high_sta_auth_seen": 0,
+    "high_ip_pass": 0,
+    "low_attempts": 4,
+    "low_ip_pass": 4,
+    "pcap_frames": 524,
+    "rx_error_records": 0,
+    "malformed_cap_records": [
+      "CAP 47379877 312 256 80000000ffffffffffff42d13336965142d133369651402f0d52272d0100000064003187000c6d7"
+    ]
+  }
+]

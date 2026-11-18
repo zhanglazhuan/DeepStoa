@@ -14,13 +14,13 @@ idf_component_register(
         "modules/view_done.c"
         "modules/view_timer.c"
         "modules/view_todo.c"
-        "subpages/controller_settings.c"
-        "subpages/view_about.c"
-        "subpages/view_home.c"
-        "subpages/view_launch.c"
-        "subpages/view_settings.c"
-        "subpages/view_task_form.c"
-    INCLUDE_DIRS "." "modules" "subpages"
+        "pages/controller_settings.c"
+        "pages/view_about.c"
+        "pages/view_home.c"
+        "pages/view_launch.c"
+        "pages/view_settings.c"
+        "pages/view_task_form.c"
+    INCLUDE_DIRS "." "modules" "pages"
     REQUIRES lvgl
     PRIV_REQUIRES uilv appmgr controller esp_timer esp_app_format
 )

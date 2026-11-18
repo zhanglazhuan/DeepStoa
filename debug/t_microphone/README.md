@@ -28,21 +28,21 @@ idf.py -p COM4 flash monitor
 
 ## 原理图对应
 
-依据 `design/墨水屏-原理图V1.0.pdf` 音频页和 `boards/esp32s3/deepstoa_v1.h`：
+依据 `design/DeepStoa_V1.1.pdf` 音频页和 `boards/esp32s3/deepstoa_v1.h`：
 
 | 功能 | 连接 |
 | --- | --- |
-| I2C SDA/SCL | GPIO17 / GPIO18；ES8311 7-bit 地址 0x18，ES7210 0x40 |
-| MCLK/BCLK/LRCLK | GPIO8 / GPIO7 / GPIO6 |
-| 播放数据 MCU TX | GPIO1 → ES8311 DSDIN |
-| 录音数据 MCU RX | GPIO5 ← ES7210 SDOUT1 |
+| I2C SDA/SCL | GPIO13 / GPIO14；ES8311 7-bit 地址 0x18，ES7210 0x40 |
+| MCLK/BCLK/LRCLK | GPIO44 / GPIO43 / GPIO42 |
+| 播放数据 MCU TX | GPIO41 → ES8311 DSDIN |
+| 录音数据 MCU RX | GPIO46 ← ES7210 SDOUT1 |
 | U14 麦克风 | ES7210 MIC1，TDM slot0 |
 | U13 麦克风 | ES7210 MIC2，TDM slot2 |
 | 硬件回声参考 | ES7210 MIC3，TDM slot1，来自 ES8311 模拟输出支路 |
 | 空闲通道 | MIC4，TDM slot3，不送入 AFE |
-| 音频电源 / 扬声器使能 | AW9523 P0.0 EN_POWER / P1.1 AP_EN |
+| 音频电源 / 扬声器使能 | ESP32 GPIO17 EN_POWER / AW9523 P1.6 AP_EN |
 
-`AMP_EN` 是耳机插座检测输入，不把它配置成输出。
+V1.1 已移除 `AMP_EN` 耳机检测输入。初始化时先将 GPIO17 拉高并等待音频电源稳定，再初始化共享 I2C 和 AW9523；`AP_EN` 在播放前保持低电平。
 两路物理麦克风 PGA 为 24dB，MIC3 参考为 0dB；物理增益编号与 TDM 槽位不同。
 
 ## AEC 实现与限制
@@ -63,7 +63,7 @@ ESP-SR 官方约定 AFE 多通道输入按交错格式排列，最后一个有�
 - `AC_RMS` 是去除直流后的幅度；`dBFS` 越接近 0 越大。说话时两路 MIC 应有明显变化。
 - `DC` 为直流偏移，`peak` 为样本绝对峰值，`clip` 为接近满量程的样本数。持续削顶时降低麦克风增益。
 - 播放时 `REF_MIC3(slot1)` 应明显高于静音底噪；空闲 MIC4 数值不用于判断麦克风好坏。
-- 两路 MIC 都不随说话变化：检查 ES7210、MICBIAS12、U13/U14 供电、GPIO5 及共享时钟。
+- 两路 MIC 都不随说话变化：检查 ES7210、MICBIAS12、U13/U14 供电、GPIO46 及共享时钟。
 - MIC 有变化但 AEC_OUT 一直为零：提供启动时的 AFE pipeline 日志及这五路电平日志。
 - 耳机能回放语音而喇叭不能：采集与 DAC 链路基本工作，继续检查 HT6872 功放/喇叭路径，不要把问题归因于 AEC。
 

@@ -7,8 +7,13 @@
 #include "model.h"
 
 #define ANKI_SOURCE_ROOT "/sdcard/anki"
-#define ANKI_MAX_SOURCE_LINES 10000U
-#define ANKI_MAX_SOURCE_BYTES (2U * 1024U * 1024U)
+#define ANKI_MAX_SOURCE_LINES 20000U
+#define ANKI_MAX_SOURCE_BYTES (12U * 1024U * 1024U)
+
+/* TXT: one physical line per card, front|back. Optional stable identity:
+ * @id=unique_key front|back. Use an ASCII alphanumeric/underscore/dash key.
+ * In back, \n inserts a display
+ * line break; \\ inserts a literal backslash. Other escapes remain literal. */
 
 typedef enum {
     ANKI_SYNC_OK = 0,
@@ -17,9 +22,12 @@ typedef enum {
     ANKI_SYNC_ERR_TOO_LARGE,
     ANKI_SYNC_ERR_TOO_MANY_LINES,
     ANKI_SYNC_ERR_TOO_MANY_CARDS,
+    ANKI_SYNC_ERR_HISTORY_CAPACITY,
+    ANKI_SYNC_ERR_DUPLICATE_ID,
     ANKI_SYNC_ERR_FORMAT,
     ANKI_SYNC_ERR_MEMORY,
     ANKI_SYNC_ERR_STORAGE,
+    ANKI_SYNC_ERR_NO_SPACE,
     ANKI_SYNC_ERR_ID_EXHAUSTED,
 } AnkiSyncError;
 
@@ -28,8 +36,8 @@ typedef struct {
     uint16_t updated;
     uint16_t unchanged;
     uint16_t missing;
-    uint16_t purged;
     uint16_t skipped;
+    uint32_t first_skipped_line;
     AnkiSyncError error;
 } AnkiSyncResult;
 

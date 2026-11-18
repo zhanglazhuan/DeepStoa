@@ -17,6 +17,7 @@ typedef struct {
     char trash_path[128];
     uint64_t source_hash;
     uint32_t source_size;
+    uint32_t deletion_marker;
 } AnkiTrashEntry;
 
 void anki_trash_reconcile_external_restores(AnkiModel *model);

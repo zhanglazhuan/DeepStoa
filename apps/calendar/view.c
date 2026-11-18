@@ -9,7 +9,7 @@
 #include "view.h"
 #include "model.h"
 #include "controller.h"
-#include "subpages/view_month.h"
+#include "pages/view_month.h"
 
 static const char *TAG = "calendar_view";
 

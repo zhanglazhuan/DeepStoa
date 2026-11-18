@@ -6,6 +6,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/i2c_master.h"
+#include "driver/gpio.h"
 #include "driver/i2s_std.h"
 #include "driver/i2s_tdm.h"
 #include "esp_codec_dev.h"
@@ -70,7 +71,9 @@ esp_err_t board_audio_open(bool capture, unsigned rate, unsigned channels)
     if (!atomic_compare_exchange_strong(&opened, &expected, true)) return ESP_ERR_INVALID_STATE;
     esp_err_t err = ESP_OK;
     board_audio_set_amplifier(false);
-    aw9523_set_pin(DEEPV1_AW_PIN_EN_POWER, 1);
+    // The display startup enables GPIO17 before creating the shared I2C bus.
+    // Keep this rail on even when audio closes, so other I2C devices work.
+    CHECK(gpio_set_level(DEEPV1_PIN_EN_POWER, 1));
     vTaskDelay(pdMS_TO_TICKS(100));
     CHECK(i2c_master_probe(bus, 0x18, 100));
     if (capture) CHECK(i2c_master_probe(bus, 0x40, 100));

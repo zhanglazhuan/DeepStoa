@@ -5,8 +5,8 @@ idf_component_register(
         "model.c"
         "storage.c"
         "view.c"
-        "subpages/view_library.c"
-        "subpages/view_reading.c"
+        "pages/view_library.c"
+        "pages/view_reading.c"
         "epub/fiction_epub_adapter.cpp"
         "epub/fiction_epub_rich_adapter.cpp"
         "epub/engine/epub_converter.cc"
@@ -18,7 +18,7 @@ idf_component_register(
         "epub/engine/rich/EpubRichReader.cpp"
         "epub/engine/rich/RubbishHtmlParser.cpp"
         "epub/engine/rich/blocks/TextBlock.cpp"
-    INCLUDE_DIRS "." "subpages"
+    INCLUDE_DIRS "." "pages"
     REQUIRES lvgl
     PRIV_REQUIRES uilv appmgr controller flash
 )

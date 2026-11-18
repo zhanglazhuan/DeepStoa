@@ -6,8 +6,8 @@ idf_component_register(
         "model.c"
         "controller.c"
         "view.c"
-        "subpages/view_month.c"
-    INCLUDE_DIRS "." "subpages"
+        "pages/view_month.c"
+    INCLUDE_DIRS "." "pages"
     REQUIRES lvgl
     PRIV_REQUIRES uilv appmgr
 )

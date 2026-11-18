@@ -1,0 +1,174 @@
+[
+  {
+    "power": [
+      76,
+      76
+    ],
+    "start": 7.032,
+    "profile": "DeepStoa config",
+    "end": 8.172,
+    "result": "E (6054) t_wifi: my_test_wifi / DeepStoa config: FAIL (disconnected)",
+    "alignment": "estimated callback clock origin from AUTH output delay",
+    "frames": {
+      "BEACON": 14
+    }
+  },
+  {
+    "power": [
+      76,
+      76
+    ],
+    "start": 8.672,
+    "profile": "ESP-IDF defaults",
+    "end": 9.719,
+    "result": "E (7614) t_wifi: my_test_wifi / ESP-IDF defaults: FAIL (disconnected)",
+    "alignment": "estimated callback clock origin from AUTH output delay",
+    "frames": {
+      "BEACON": 13
+    }
+  },
+  {
+    "power": [
+      8,
+      8
+    ],
+    "start": 14.657,
+    "profile": "DeepStoa config",
+    "end": 15.829,
+    "result": "I (13714) t_wifi: my_test_wifi / DeepStoa config: PASS",
+    "alignment": "estimated callback clock origin from AUTH output delay",
+    "frames": {
+      "BEACON": 14,
+      "PROBE_RESP AP->STA": 2,
+      "AUTH STA->AP": 1,
+      "AUTH AP->STA": 2,
+      "ASSOC_REQ STA->AP": 1,
+      "ASSOC_RESP AP->STA": 2,
+      "DATA/EAPOL AP->STA": 4,
+      "DATA/EAPOL STA->AP": 2,
+      "DISASSOC STA->AP": 5
+    }
+  },
+  {
+    "power": [
+      8,
+      8
+    ],
+    "start": 16.344,
+    "profile": "ESP-IDF defaults",
+    "end": 17.516,
+    "result": "I (15404) t_wifi: my_test_wifi / ESP-IDF defaults: PASS",
+    "alignment": "estimated callback clock origin from AUTH output delay",
+    "frames": {
+      "PROBE_RESP AP->STA": 2,
+      "AUTH STA->AP": 1,
+      "AUTH AP->STA": 2,
+      "BEACON": 14,
+      "ASSOC_REQ STA->AP": 1,
+      "ASSOC_RESP AP->STA": 2,
+      "DATA/EAPOL AP->STA": 4,
+      "DATA/EAPOL STA->AP": 2,
+      "DISASSOC STA->AP": 2
+    }
+  },
+  {
+    "power": [
+      76,
+      76
+    ],
+    "start": 22.485,
+    "profile": "DeepStoa config",
+    "end": 23.547,
+    "result": "E (21434) t_wifi: my_test_wifi / DeepStoa config: FAIL (disconnected)",
+    "alignment": "estimated callback clock origin from AUTH output delay",
+    "frames": {
+      "BEACON": 13
+    }
+  },
+  {
+    "power": [
+      76,
+      76
+    ],
+    "start": 24.047,
+    "profile": "ESP-IDF defaults",
+    "end": 25.079,
+    "result": "E (22974) t_wifi: my_test_wifi / ESP-IDF defaults: FAIL (disconnected)",
+    "alignment": "estimated callback clock origin from AUTH output delay",
+    "frames": {
+      "BEACON": 13
+    }
+  },
+  {
+    "power": [
+      8,
+      8
+    ],
+    "start": 30.047,
+    "profile": "DeepStoa config",
+    "end": 31.282,
+    "result": "I (29164) t_wifi: my_test_wifi / DeepStoa config: PASS",
+    "alignment": "estimated callback clock origin from AUTH output delay",
+    "frames": {
+      "PROBE_RESP AP->STA": 2,
+      "AUTH STA->AP": 1,
+      "AUTH AP->STA": 1,
+      "ASSOC_REQ STA->AP": 1,
+      "ASSOC_RESP AP->STA": 2,
+      "BEACON": 14,
+      "DATA/EAPOL AP->STA": 4,
+      "DATA/EAPOL STA->AP": 2,
+      "DISASSOC STA->AP": 1
+    }
+  },
+  {
+    "power": [
+      8,
+      8
+    ],
+    "start": 31.797,
+    "profile": "ESP-IDF defaults",
+    "end": 33.0,
+    "result": "I (30884) t_wifi: my_test_wifi / ESP-IDF defaults: PASS",
+    "alignment": "estimated callback clock origin from AUTH output delay",
+    "frames": {
+      "PROBE_RESP AP->STA": 2,
+      "AUTH STA->AP": 1,
+      "AUTH AP->STA": 2,
+      "BEACON": 14,
+      "ASSOC_REQ STA->AP": 1,
+      "ASSOC_RESP AP->STA": 2,
+      "DATA/EAPOL AP->STA": 3,
+      "DATA/EAPOL STA->AP": 2,
+      "DISASSOC STA->AP": 2
+    }
+  },
+  {
+    "power": [
+      76,
+      76
+    ],
+    "start": 37.532,
+    "profile": "DeepStoa config",
+    "end": 38.594,
+    "result": "E (36484) t_wifi: my_test_wifi / DeepStoa config: FAIL (disconnected)",
+    "alignment": "estimated callback clock origin from AUTH output delay",
+    "frames": {
+      "BEACON": 13
+    }
+  },
+  {
+    "power": [
+      76,
+      76
+    ],
+    "start": 39.094,
+    "profile": "ESP-IDF defaults",
+    "end": 40.141,
+    "result": "E (38024) t_wifi: my_test_wifi / ESP-IDF defaults: FAIL (disconnected)",
+    "alignment": "estimated callback clock origin from AUTH output delay",
+    "frames": {
+      "BEACON": 13
+    }
+  }
+]

@@ -84,6 +84,7 @@ Page lv_page_create(const char *title, bool allow_back, lv_event_cb_t back_cb, v
     lv_obj_t *right_slot = lv_obj_create(page.header);
     lv_obj_remove_style_all(right_slot);
     lv_obj_set_size(right_slot, 40, 40);
+    lv_obj_set_style_margin_right(right_slot, 12, 0);
     page.header_right = right_slot;
 
     /* 7. Container — flex_grow: 1 fills remaining space, matches EPOS */

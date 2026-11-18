@@ -1,5 +1,5 @@
 idf_component_register(
-  SRCS "i2c_bsp.c"
+  SRCS "i2c_pin_swap.c" "i2c_bsp.c"
   REQUIRES driver
   INCLUDE_DIRS "./")
 

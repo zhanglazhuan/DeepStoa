@@ -1,4 +1,4 @@
-/* DeepStoa V1 speaker / I2S hardware test. */
+/* DeepStoa V1.1 speaker / I2S hardware test. */
 
 #include <math.h>
 #include <stdint.h>
@@ -7,6 +7,7 @@
 #include "freertos/task.h"
 #include "esp_err.h"
 #include "esp_log.h"
+#include "driver/gpio.h"
 #include "driver/i2c_master.h"
 #include "driver/i2s_std.h"
 
@@ -149,22 +150,33 @@ static void i2s_init(void)
 
 void app_main(void)
 {
-    ESP_LOGI(TAG, "=== DeepStoa V1 speaker test ===");
+    ESP_LOGI(TAG, "=== DeepStoa V1.1 speaker test ===");
     ESP_LOGI(TAG, "I2S MCLK=%d BCLK=%d LRCLK=%d DOUT=%d",
              DEEPV1_PIN_I2S_MCLK, DEEPV1_PIN_I2S_BCLK,
              DEEPV1_PIN_I2S_LRCLK, DEEPV1_PIN_I2S_TX);
 
+    /* Power the codecs before initializing their shared I2C bus. */
+    gpio_config_t power_conf = {
+        .pin_bit_mask = 1ULL << DEEPV1_PIN_EN_POWER,
+        .mode = GPIO_MODE_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    ESP_ERROR_CHECK(gpio_config(&power_conf));
+    ESP_ERROR_CHECK(gpio_set_level(DEEPV1_PIN_EN_POWER, 1));
+    vTaskDelay(pdMS_TO_TICKS(100));
+    ESP_LOGI(TAG, "EN_POWER GPIO%d HIGH before shared I2C initialization",
+             DEEPV1_PIN_EN_POWER);
+
     ESP_ERROR_CHECK(aw9523_init(DEEPV1_I2C_PORT, DEEPV1_PIN_I2C_SDA,
                                 DEEPV1_PIN_I2C_SCL, DEEPV1_PIN_IO_RESET,
                                 DEEPV1_AW9523_ADDR));
-    /* AMP_EN is the J4 headphone sense input; AP_EN controls U11. */
-    aw9523_set_pin(DEEPV1_AW_PIN_EN_POWER, 1);
+    /* AP_EN controls the speaker amplifier; V1.1 has no headphone detect. */
     aw9523_set_pin(DEEPV1_AW_PIN_AP_EN, 0);
     vTaskDelay(pdMS_TO_TICKS(100));
 
-    ESP_LOGI(TAG, "AW9523 EN_POWER=%d AMP_EN=%d AP_EN=%d",
-             aw9523_get_pin(DEEPV1_AW_PIN_EN_POWER),
-             aw9523_get_pin(DEEPV1_AW_PIN_AMP_EN),
+    ESP_LOGI(TAG, "AW9523 AP_EN=%d",
              aw9523_get_pin(DEEPV1_AW_PIN_AP_EN));
     scan_audio_i2c();
 
@@ -190,10 +202,9 @@ void app_main(void)
                                           &written, portMAX_DELAY));
         static unsigned long writes;
         if ((++writes % 1000) == 0) {
-            ESP_LOGI(TAG, "I2S writes=%lu last_bytes=%u AP_EN=%d AMP_EN=%d",
+            ESP_LOGI(TAG, "I2S writes=%lu last_bytes=%u AP_EN=%d",
                      writes, (unsigned)written,
-                     aw9523_get_pin(DEEPV1_AW_PIN_AP_EN),
-                     aw9523_get_pin(DEEPV1_AW_PIN_AMP_EN));
+                     aw9523_get_pin(DEEPV1_AW_PIN_AP_EN));
         }
     }
 }

@@ -12,11 +12,11 @@ Port the Settings application from EPOS/Zephyr to DeepStoa/ESP-IDF using the exi
 
 | Subpage | Source File | Description |
 |---------|-------------|-------------|
-| Home | `subpages/view_home.c` | Settings main menu |
-| General | `subpages/view_general.c` | Wallpaper + DateTime |
-| Battery | `subpages/view_battery.c` | Battery percentage + auto sleep |
-| Storage | `subpages/view_storage.c` | Storage usage info |
-| Security | `subpages/view_security.c` | PIN code settings |
+| Home | `pages/view_home.c` | Settings main menu |
+| General | `pages/view_general.c` | Wallpaper + DateTime |
+| Battery | `pages/view_battery.c` | Battery percentage + auto sleep |
+| Storage | `pages/view_storage.c` | Storage usage info |
+| Security | `pages/view_security.c` | PIN code settings |
 
 **Excluded (Phase 2)**: WiFi, Bluetooth, Updates, OTA download, BLE controller
 
@@ -29,7 +29,7 @@ apps/settings/
 ├── settings_model.h/c          ← Data model (battery/storage/security/wallpaper/datetime)
 ├── settings_view.h/c           ← View: owns page_navigator, registers pages
 ├── settings_controller.h/c     ← Controller: event handlers + business logic
-└── subpages/
+└── pages/
     ├── view_home.h/c           ← Settings home menu
     ├── view_general.h/c        ← Wallpaper + datetime settings
     ├── view_battery.h/c        ← Battery settings

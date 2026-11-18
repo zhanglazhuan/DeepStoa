@@ -5,7 +5,6 @@
 #include "esp_vfs_fat.h"
 #include "sdmmc_cmd.h"
 
-#include "aw9523.h"
 #include "deepstoa_v1.h"
 #include "fs_control.h"
 
@@ -18,9 +17,7 @@ esp_err_t fs_control_init(void)
 {
     if (s_mounted) return ESP_OK;
 
-    /* The SD socket shares the board peripheral power rail. */
-    aw9523_set_pin(DEEPV1_AW_PIN_EN_POWER, 1);
-    vTaskDelay(pdMS_TO_TICKS(100));
+    /* V1.1 J6 is powered directly by 3V3, not the audio EN_Power rail. */
 
     sdmmc_host_t host = SDMMC_HOST_DEFAULT();
     host.flags = SDMMC_HOST_FLAG_4BIT;
